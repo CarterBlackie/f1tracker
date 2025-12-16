@@ -40,6 +40,10 @@ export default function Race() {
   const { year, round } = useParams();
   const [state, setState] = useState<State>({ status: "loading" });
 
+  // Replay controls
+  const [auto, setAuto] = useState(true);
+  const [slider, setSlider] = useState(0.15); // 0..1
+
   useEffect(() => {
     let cancelled = false;
 
@@ -126,7 +130,47 @@ export default function Race() {
       </div>
 
       <CircuitHeader race={race} />
-      <TrackMap circuitId={race.Circuit.circuitId} />
+
+      {/* Replay controls */}
+      <div
+        style={{
+          border: "1px solid #ddd",
+          borderRadius: 12,
+          padding: "1rem",
+          margin: "1rem 0",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
+          <strong>Replay</strong>
+
+          <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={auto}
+              onChange={(e) => setAuto(e.target.checked)}
+            />
+            Auto
+          </label>
+        </div>
+
+        <div style={{ marginTop: 10 }}>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={Math.round(slider * 100)}
+            onChange={(e) => setSlider(Number(e.target.value) / 100)}
+            disabled={auto}
+            style={{ width: "100%" }}
+          />
+        </div>
+
+        <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
+          {auto ? "Dots move automatically (demo)." : `Replay position: ${Math.round(slider * 100)}%`}
+        </div>
+      </div>
+
+      <TrackMap circuitId={race.Circuit.circuitId} replayT={auto ? undefined : slider} />
 
       {results ? (
         <>
@@ -160,10 +204,10 @@ export default function Race() {
                       {r.position}
                     </td>
                     <td style={{ padding: "8px", borderBottom: "1px solid #f0f0f0" }}>
-                      <Link to={`/driver/${race.season}/${r.Driver.driverId}`}>{driverName(r)}</Link>
+                      {driverName(r)}
                     </td>
                     <td style={{ padding: "8px", borderBottom: "1px solid #f0f0f0" }}>
-                      <Link to={`/team/${race.season}/${r.Constructor.constructorId}`}>{r.Constructor.name}</Link>
+                      {r.Constructor.name}
                     </td>
                     <td style={{ padding: "8px", borderBottom: "1px solid #f0f0f0" }}>
                       {r.grid ?? "-"}

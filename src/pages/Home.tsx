@@ -63,6 +63,7 @@ export default function Home() {
       <ul>
         <li><Link to="/season">Season</Link></li>
         <li><Link to="/live">Live</Link></li>
+        <li><Link to="/standings">Standings</Link></li>
       </ul>
     </div>
   );
