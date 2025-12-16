@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { getSeasonRaces, raceStartLocal } from "../api/f1";
 import type { JolpicaRace } from "../types/f1";
 
@@ -8,7 +9,6 @@ type LoadState =
   | { status: "ready"; racesByYear: Record<number, JolpicaRace[]> };
 
 function formatLocal(dt: Date) {
-  // local browser time
   return new Intl.DateTimeFormat(undefined, {
     weekday: "short",
     year: "numeric",
@@ -83,6 +83,10 @@ export default function Season() {
         >
           {nextYear}
         </button>
+
+        <div style={{ marginLeft: "auto" }}>
+          <Link to="/">Home</Link>
+        </div>
       </div>
 
       {state.status === "loading" && <p>Loading calendar…</p>}
@@ -100,12 +104,19 @@ export default function Season() {
           {races.map((r) => {
             const dt = raceStartLocal(r);
             return (
-              <li key={`${r.season}-${r.round}`} style={{ marginBottom: "0.8rem" }}>
-                <div style={{ fontWeight: 700 }}>{r.raceName}</div>
+              <li
+                key={`${r.season}-${r.round}`}
+                style={{ marginBottom: "0.9rem" }}
+              >
+                <div style={{ fontWeight: 700 }}>
+                  <Link to={`/race/${r.season}/${r.round}`}>{r.raceName}</Link>
+                </div>
+
                 <div style={{ opacity: 0.85 }}>
                   {r.Circuit.circuitName} — {r.Circuit.Location.locality},{" "}
                   {r.Circuit.Location.country}
                 </div>
+
                 <div style={{ opacity: 0.85 }}>{formatLocal(dt)}</div>
               </li>
             );
