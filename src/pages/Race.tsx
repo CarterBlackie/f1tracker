@@ -4,6 +4,7 @@ import { getRace, getRaceResults, raceStartLocal } from "../api/f1";
 import type { JolpicaRace, JolpicaResult, JolpicaSession } from "../types/f1";
 import CircuitHeader from "../components/CircuitHeader";
 import TrackMap from "../components/TrackMap";
+import RaceSummary from "../components/RaceSummary";
 
 type State =
   | { status: "loading" }
@@ -124,12 +125,13 @@ export default function Race() {
         {race.Circuit.Location.locality}, {race.Circuit.Location.country}
       </div>
 
-      {/* Option 2 visuals */}
       <CircuitHeader race={race} />
       <TrackMap circuitId={race.Circuit.circuitId} />
 
       {results ? (
         <>
+          <RaceSummary results={results} />
+
           <h2>Race results</h2>
 
           <div style={{ overflowX: "auto" }}>
@@ -158,10 +160,10 @@ export default function Race() {
                       {r.position}
                     </td>
                     <td style={{ padding: "8px", borderBottom: "1px solid #f0f0f0" }}>
-                      {driverName(r)}
+                      <Link to={`/driver/${race.season}/${r.Driver.driverId}`}>{driverName(r)}</Link>
                     </td>
                     <td style={{ padding: "8px", borderBottom: "1px solid #f0f0f0" }}>
-                      {r.Constructor.name}
+                      <Link to={`/team/${race.season}/${r.Constructor.constructorId}`}>{r.Constructor.name}</Link>
                     </td>
                     <td style={{ padding: "8px", borderBottom: "1px solid #f0f0f0" }}>
                       {r.grid ?? "-"}

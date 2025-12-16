@@ -1,6 +1,6 @@
 export type JolpicaSession = {
-  date: string; // YYYY-MM-DD
-  time?: string; // HH:MM:SSZ
+  date: string;
+  time?: string;
 };
 
 export type JolpicaRace = {
@@ -54,7 +54,7 @@ export type JolpicaConstructor = {
 };
 
 export type JolpicaTime = {
-  time: string; // e.g. "1:34:12.345"
+  time: string;
 };
 
 export type JolpicaFastestLap = {
@@ -77,7 +77,7 @@ export type JolpicaResult = {
   laps?: string;
   status: string;
 
-  Time?: JolpicaTime; // only for classified finishers
+  Time?: JolpicaTime;
   FastestLap?: JolpicaFastestLap;
 };
 
@@ -91,6 +91,47 @@ export type JolpicaRaceResultsResponse = {
       season: string;
       round?: string;
       Races: JolpicaResultsRace[];
+    };
+  };
+};
+
+export type JolpicaDriverStanding = {
+  position: string;
+  points: string;
+  wins: string;
+  Driver: JolpicaDriver;
+  Constructors: JolpicaConstructor[];
+};
+
+export type JolpicaDriverStandingsResponse = {
+  MRData: {
+    StandingsTable: {
+      season: string;
+      StandingsLists: Array<{
+        season: string;
+        round: string;
+        DriverStandings: JolpicaDriverStanding[];
+      }>;
+    };
+  };
+};
+
+export type JolpicaConstructorStanding = {
+  position: string;
+  points: string;
+  wins: string;
+  Constructor: JolpicaConstructor;
+};
+
+export type JolpicaConstructorStandingsResponse = {
+  MRData: {
+    StandingsTable: {
+      season: string;
+      StandingsLists: Array<{
+        season: string;
+        round: string;
+        ConstructorStandings: JolpicaConstructorStanding[];
+      }>;
     };
   };
 };
