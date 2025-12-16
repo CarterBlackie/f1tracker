@@ -4,8 +4,23 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>f1tracker</title>
+    <title>F1 Live Tracker</title>
+
+    <!-- GitHub Pages SPA redirect restore (only triggers after 404.html redirect) -->
+    <script>
+      (function () {
+        var repo = "/f1tracker";
+        var l = window.location;
+
+        // Only run if we're on the repo root AND got the special ?/path format
+        if (l.pathname === repo + "/" && l.search.startsWith("?/")) {
+          var newPath = l.search.slice(2); // remove "?/"
+          window.history.replaceState(null, "", repo + "/" + newPath + l.hash);
+        }
+      })();
+    </script>
   </head>
+
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>

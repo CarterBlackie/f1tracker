@@ -1,0 +1,16 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Redirecting...</title>
+    <script>
+      // GitHub Pages SPA redirect (keeps clean URLs)
+      // Redirects /repo/path -> /repo/?/path so index.html can restore it.
+      var l = window.location;
+      var repo = "/f1tracker";
+      var path = l.pathname.startsWith(repo) ? l.pathname.slice(repo.length) : l.pathname;
+      l.replace(l.origin + repo + "/?/" + path.replace(/^\//, "") + l.search + l.hash);
+    </script>
+  </head>
+  <body></body>
+</html>

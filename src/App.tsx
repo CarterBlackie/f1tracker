@@ -1,10 +1,14 @@
-function App() {
+import { Routes, Route } from "react-router-dom";
+import Home from "./pages/Home";
+import Season from "./pages/Season";
+import Live from "./pages/Live";
+
+export default function App() {
   return (
-    <div style={{ padding: "2rem", fontFamily: "system-ui" }}>
-      <h1>F1 Live Tracker</h1>
-      <p>Season hub coming soon.</p>
-    </div>
+    <Routes>
+      <Route path="/" element={<Home />} />
+      <Route path="/season" element={<Season />} />
+      <Route path="/live" element={<Live />} />
+    </Routes>
   );
 }
-
-export default App;
