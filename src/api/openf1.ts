@@ -3,6 +3,7 @@ import type {
   OpenF1Driver,
   OpenF1LocationPoint,
   OpenF1PositionPoint,
+  OpenF1Lap,
 } from "../types/openf1";
 import { loadCache, saveCache } from "../utils/cache";
 
@@ -28,15 +29,25 @@ export async function getSessionDrivers(sessionKey: number): Promise<OpenF1Drive
   return fetchJson(`${BASE}/drivers?session_key=${sessionKey}`);
 }
 
-function isoPlusMs(iso: string, ms: number): string {
-  return new Date(new Date(iso).getTime() + ms).toISOString();
+function clamp01(x: number) {
+  return Math.max(0, Math.min(1, x));
 }
 
 export function sessionTimeAt(session: OpenF1Session, t01: number): Date {
   const start = new Date(session.date_start).getTime();
   const end = new Date(session.date_end).getTime();
-  const clamped = Math.max(0, Math.min(1, t01));
-  return new Date(start + (end - start) * clamped);
+  const t = start + (end - start) * clamp01(t01);
+  return new Date(t);
+}
+
+function isoPlusMs(iso: string, ms: number): string {
+  return new Date(new Date(iso).getTime() + ms).toISOString();
+}
+
+function roundIsoToBucket(centerIso: string, bucketMs: number) {
+  const ms = new Date(centerIso).getTime();
+  const rounded = Math.floor(ms / bucketMs) * bucketMs;
+  return new Date(rounded).toISOString();
 }
 
 export async function getLocationSlice(
@@ -44,8 +55,9 @@ export async function getLocationSlice(
   centerIso: string,
   windowMs = 800
 ): Promise<OpenF1LocationPoint[]> {
-  const from = isoPlusMs(centerIso, -windowMs);
-  const to = isoPlusMs(centerIso, windowMs);
+  const bucketCenter = roundIsoToBucket(centerIso, 2000);
+  const from = isoPlusMs(bucketCenter, -windowMs);
+  const to = isoPlusMs(bucketCenter, windowMs);
 
   return fetchJson(
     `${BASE}/location?session_key=${sessionKey}&date>=${encodeURIComponent(
@@ -59,12 +71,33 @@ export async function getPositionSlice(
   centerIso: string,
   windowMs = 1200
 ): Promise<OpenF1PositionPoint[]> {
-  const from = isoPlusMs(centerIso, -windowMs);
-  const to = isoPlusMs(centerIso, windowMs);
+  const bucketCenter = roundIsoToBucket(centerIso, 2000);
+  const from = isoPlusMs(bucketCenter, -windowMs);
+  const to = isoPlusMs(bucketCenter, windowMs);
 
   return fetchJson(
     `${BASE}/position?session_key=${sessionKey}&date>=${encodeURIComponent(
       from
     )}&date<=${encodeURIComponent(to)}`
+  );
+}
+
+/**
+ * Laps update slowly, so we query a wider window around time.
+ * Using date_start filters keeps it reasonable.
+ */
+export async function getLapsSlice(
+  sessionKey: number,
+  centerIso: string,
+  windowMs = 1000 * 60 * 12 // 12 minutes
+): Promise<OpenF1Lap[]> {
+  const bucketCenter = roundIsoToBucket(centerIso, 2000);
+  const from = isoPlusMs(bucketCenter, -windowMs);
+  const to = isoPlusMs(bucketCenter, windowMs);
+
+  return fetchJson(
+    `${BASE}/laps?session_key=${sessionKey}&date_start>=${encodeURIComponent(
+      from
+    )}&date_start<=${encodeURIComponent(to)}`
   );
 }

@@ -4,11 +4,14 @@ import { buildTrackOutline } from "../utils/openf1Track";
 
 type Props = {
   drivers: OpenF1Driver[];
-  points: OpenF1LocationPoint[];
+  points: OpenF1LocationPoint[];        // raw slice (real)
+  smoothPoints?: OpenF1LocationPoint[]; // optional interpolated points (visual)
   title?: string;
 
   selectedDriverNumber?: number | null;
   onSelectDriver?: (driverNumber: number | null) => void;
+
+  lockCamera?: boolean;
 };
 
 type Dot = {
@@ -19,6 +22,7 @@ type Dot = {
   color: string;
   x: number;
   y: number;
+  date: string;
 };
 
 function pickLatestPerDriver(points: OpenF1LocationPoint[]) {
@@ -33,12 +37,16 @@ function pickLatestPerDriver(points: OpenF1LocationPoint[]) {
 export default function OpenF1Map({
   drivers,
   points,
+  smoothPoints,
   title = "Replay map",
   selectedDriverNumber = null,
   onSelectDriver,
+  lockCamera = false,
 }: Props) {
-  const latest = useMemo(() => pickLatestPerDriver(points), [points]);
-  const outline = useMemo(() => buildTrackOutline(points), [points]);
+  const visualPoints = smoothPoints ?? points;
+
+  const latest = useMemo(() => pickLatestPerDriver(visualPoints), [visualPoints]);
+  const outline = useMemo(() => buildTrackOutline(points), [points]); // outline from real points
 
   const driverByNum = useMemo(() => {
     const m = new Map<number, OpenF1Driver>();
@@ -66,6 +74,7 @@ export default function OpenF1Map({
           color: d.team_colour ? `#${d.team_colour}` : "#111",
           x: p.x,
           y: p.y,
+          date: p.date,
         };
       })
       .filter(Boolean) as Dot[];
@@ -86,11 +95,25 @@ export default function OpenF1Map({
     return raw;
   }, [latest, driverByNum]);
 
+  const focusedDot = useMemo(() => {
+    if (typeof selectedDriverNumber !== "number") return null;
+    return dots.find((d) => d.driver_number === selectedDriverNumber) ?? null;
+  }, [dots, selectedDriverNumber]);
+
   const viewBox = useMemo(() => {
     const b = boundsRef.current;
     if (!b) return "0 0 100 100";
+
+    if (lockCamera && focusedDot) {
+      const w = (b.maxX - b.minX) * 0.55;
+      const h = (b.maxY - b.minY) * 0.55;
+      const minX = focusedDot.x - w / 2;
+      const minY = focusedDot.y - h / 2;
+      return `${minX} ${minY} ${w} ${h}`;
+    }
+
     return `${b.minX} ${b.minY} ${b.maxX - b.minX} ${b.maxY - b.minY}`;
-  }, [dots]);
+  }, [dots, lockCamera, focusedDot]);
 
   const hasFocus = typeof selectedDriverNumber === "number";
 
@@ -134,12 +157,8 @@ export default function OpenF1Map({
         width="100%"
         height="360"
         style={{ display: "block", marginTop: 10, cursor: onSelectDriver ? "pointer" : "default" }}
-        onClick={() => {
-          // clicking empty map clears focus
-          onSelectDriver?.(null);
-        }}
+        onClick={() => onSelectDriver?.(null)}
       >
-        {/* Track outline */}
         {outline.length > 10 && (
           <polyline
             points={outline.map((p) => `${p.x},${p.y}`).join(" ")}
@@ -150,7 +169,6 @@ export default function OpenF1Map({
           />
         )}
 
-        {/* Car dots */}
         {dots.map((d) => {
           const focused = selectedDriverNumber === d.driver_number;
           const dim = hasFocus && !focused;
@@ -168,7 +186,6 @@ export default function OpenF1Map({
               }}
             >
               <circle cx={d.x} cy={d.y} r={r} fill={d.color} />
-
               <text
                 x={d.x}
                 y={d.y + 10}
@@ -179,7 +196,6 @@ export default function OpenF1Map({
                 {d.acronym}
               </text>
 
-              {/* Small label when focused */}
               {focused && (
                 <text
                   x={d.x}
@@ -198,7 +214,7 @@ export default function OpenF1Map({
       </svg>
 
       <div style={{ fontSize: 12, opacity: 0.7, marginTop: 8 }}>
-        Tip: click a dot to focus a driver. Click empty space to clear.
+        Smooth rendering uses client-side interpolation; data still comes from OpenF1.
       </div>
     </div>
   );
