@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { getSeasonRaces, raceStartLocal } from "../api/f1";
 import type { JolpicaRace } from "../types/f1";
+import "../App.css";
 
 type LoadState =
   | { status: "idle" | "loading" }
@@ -16,6 +17,13 @@ function formatLocal(dt: Date) {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+  }).format(dt);
+}
+
+function shortDate(dt: Date) {
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "2-digit",
   }).format(dt);
 }
 
@@ -66,63 +74,155 @@ export default function Season() {
     return state.racesByYear[activeYear] ?? [];
   }, [state, activeYear]);
 
+  const now = Date.now();
+
+  const { upcoming, completed } = useMemo(() => {
+    const withTime = races.map((r) => {
+      const dt = raceStartLocal(r);
+      return { r, dt, ms: dt.getTime() };
+    });
+
+    const completed = withTime
+      .filter((x) => x.ms < now)
+      .sort((a, b) => b.ms - a.ms);
+
+    const upcoming = withTime
+      .filter((x) => x.ms >= now)
+      .sort((a, b) => a.ms - b.ms);
+
+    return { upcoming, completed };
+  }, [races, now]);
+
   return (
-    <div style={{ padding: "2rem", fontFamily: "system-ui" }}>
-      <h1>Season</h1>
-
-      <div style={{ display: "flex", gap: "0.75rem", margin: "1rem 0" }}>
-        <button
-          onClick={() => setActiveYear(thisYear)}
-          disabled={activeYear === thisYear}
-        >
-          {thisYear}
-        </button>
-        <button
-          onClick={() => setActiveYear(nextYear)}
-          disabled={activeYear === nextYear}
-        >
-          {nextYear}
-        </button>
-
-        <div style={{ marginLeft: "auto" }}>
-          <Link to="/">Home</Link>
+    <div className="container">
+      <div className="headerRow">
+        <h1 className="hTitle">Season</h1>
+        <div className="pillRow">
+          <Link className="pill" to={`/standings/${activeYear}`}>
+            Standings
+          </Link>
+          <Link className="pill" to="/">
+            Home
+          </Link>
         </div>
       </div>
 
-      {state.status === "loading" && <p>Loading calendar…</p>}
+      <div className="subRow">
+        <span>
+          Year: <strong>{activeYear}</strong>
+        </span>
+        <span className="small">•</span>
+        <span className="small">Calendar + race links</span>
+      </div>
 
-      {state.status === "error" && (
-        <p style={{ color: "crimson" }}>Error: {state.message}</p>
-      )}
+      <div className="card">
+        <div className="pillRow" style={{ justifyContent: "space-between" }}>
+          <div className="pillRow">
+            <button
+              className={`tab ${activeYear === thisYear ? "tabActive" : ""}`}
+              onClick={() => setActiveYear(thisYear)}
+            >
+              {thisYear}
+            </button>
 
-      {state.status === "ready" && races.length === 0 && (
-        <p>No races found for {activeYear}.</p>
-      )}
+            <button
+              className={`tab ${activeYear === nextYear ? "tabActive" : ""}`}
+              onClick={() => setActiveYear(nextYear)}
+            >
+              {nextYear}
+            </button>
+          </div>
 
-      {state.status === "ready" && races.length > 0 && (
-        <ol style={{ paddingLeft: "1.25rem" }}>
-          {races.map((r) => {
-            const dt = raceStartLocal(r);
-            return (
-              <li
-                key={`${r.season}-${r.round}`}
-                style={{ marginBottom: "0.9rem" }}
-              >
-                <div style={{ fontWeight: 700 }}>
-                  <Link to={`/race/${r.season}/${r.round}`}>{r.raceName}</Link>
-                </div>
+          <div className="pillRow">
+            <span className="badge">Upcoming: {upcoming.length}</span>
+            <span className="badge">Completed: {completed.length}</span>
+          </div>
+        </div>
 
-                <div style={{ opacity: 0.85 }}>
-                  {r.Circuit.circuitName} — {r.Circuit.Location.locality},{" "}
-                  {r.Circuit.Location.country}
-                </div>
+        {state.status === "loading" && <p className="small">Loading calendar…</p>}
 
-                <div style={{ opacity: 0.85 }}>{formatLocal(dt)}</div>
-              </li>
-            );
-          })}
-        </ol>
-      )}
+        {state.status === "error" && (
+          <p style={{ color: "crimson", margin: 0 }}>Error: {state.message}</p>
+        )}
+
+        {state.status === "ready" && races.length === 0 && (
+          <p className="small" style={{ margin: 0 }}>
+            No races found for {activeYear}.
+          </p>
+        )}
+
+        {state.status === "ready" && races.length > 0 && (
+          <>
+            <div className="divider" />
+
+            <h2 style={{ margin: "0 0 10px" }}>Upcoming</h2>
+            {upcoming.length === 0 ? (
+              <p className="small" style={{ marginTop: 0 }}>
+                No upcoming races.
+              </p>
+            ) : (
+              <div className="gridCards">
+                {upcoming.map(({ r, dt }) => (
+                  <Link
+                    key={`${r.season}-${r.round}`}
+                    to={`/race/${r.season}/${r.round}`}
+                    className="raceCard"
+                  >
+                    <div className="raceTop">
+                      <span className="badge">R{r.round}</span>
+                      <span className="badge">{shortDate(dt)}</span>
+                      <span className="badge" style={{ marginLeft: "auto" }}>
+                        Upcoming
+                      </span>
+                    </div>
+
+                    <div className="raceTitle">{r.raceName}</div>
+                    <div className="raceMeta">
+                      {r.Circuit.circuitName} • {r.Circuit.Location.locality},{" "}
+                      {r.Circuit.Location.country}
+                    </div>
+                    <div className="raceMeta">{formatLocal(dt)}</div>
+                  </Link>
+                ))}
+              </div>
+            )}
+
+            <div className="divider" />
+
+            <h2 style={{ margin: "0 0 10px" }}>Completed</h2>
+            {completed.length === 0 ? (
+              <p className="small" style={{ marginTop: 0 }}>
+                No completed races.
+              </p>
+            ) : (
+              <div className="gridCards">
+                {completed.map(({ r, dt }) => (
+                  <Link
+                    key={`${r.season}-${r.round}`}
+                    to={`/race/${r.season}/${r.round}`}
+                    className="raceCard"
+                  >
+                    <div className="raceTop">
+                      <span className="badge">R{r.round}</span>
+                      <span className="badge">{shortDate(dt)}</span>
+                      <span className="badge" style={{ marginLeft: "auto" }}>
+                        Completed
+                      </span>
+                    </div>
+
+                    <div className="raceTitle">{r.raceName}</div>
+                    <div className="raceMeta">
+                      {r.Circuit.circuitName} • {r.Circuit.Location.locality},{" "}
+                      {r.Circuit.Location.country}
+                    </div>
+                    <div className="raceMeta">{formatLocal(dt)}</div>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

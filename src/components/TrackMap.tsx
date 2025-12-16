@@ -3,14 +3,12 @@ import { getCircuitLineString, lineToSvgPath } from "../api/trackGeo";
 
 type Props = {
   circuitId: string;
-
-  // Demo settings
   demoCars?: number;
-
-  // Replay control:
-  // If you pass replayT (0..1), dots follow it (manual mode).
-  // If replayT is undefined, dots animate (auto mode).
   replayT?: number;
+
+  // NEW:
+  variant?: "card" | "embedded";
+  height?: number;
 };
 
 function hashToUnit(str: string) {
@@ -33,7 +31,13 @@ function getFallbackPath(circuitId: string): string {
   );
 }
 
-export default function TrackMap({ circuitId, demoCars = 6, replayT }: Props) {
+export default function TrackMap({
+  circuitId,
+  demoCars = 6,
+  replayT,
+  variant = "card",
+  height = 260,
+}: Props) {
   const [geoPath, setGeoPath] = useState<string | null>(null);
 
   useEffect(() => {
@@ -58,11 +62,13 @@ export default function TrackMap({ circuitId, demoCars = 6, replayT }: Props) {
     };
   }, [circuitId]);
 
-  const d = useMemo(() => geoPath ?? getFallbackPath(circuitId), [geoPath, circuitId]);
+  const d = useMemo(
+    () => geoPath ?? getFallbackPath(circuitId),
+    [geoPath, circuitId]
+  );
 
   const pathRef = useRef<SVGPathElement | null>(null);
 
-  // Car seeds: each car has an offset and speed
   const cars = useMemo(() => {
     const base = hashToUnit(circuitId);
     return Array.from({ length: demoCars }, (_, i) => {
@@ -77,7 +83,6 @@ export default function TrackMap({ circuitId, demoCars = 6, replayT }: Props) {
 
   const [points, setPoints] = useState<Array<{ id: string; x: number; y: number }>>([]);
 
-  // Helper to compute dot positions from a given t (0..1)
   function computeFromT(t: number) {
     const path = pathRef.current;
     if (!path) return;
@@ -91,20 +96,18 @@ export default function TrackMap({ circuitId, demoCars = 6, replayT }: Props) {
     setPoints(next);
   }
 
-  // Manual mode: when replayT is provided, update points immediately.
   useEffect(() => {
     if (typeof replayT !== "number") return;
     computeFromT(Math.max(0, Math.min(1, replayT)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replayT, d, cars]);
 
-  // Auto mode: animate when replayT is undefined
   useEffect(() => {
     if (typeof replayT === "number") return;
 
     let raf = 0;
     const startMs = performance.now();
-    const demoSpeed = 1.2; // laps per minute baseline
+    const demoSpeed = 1.2;
 
     function tick(now: number) {
       const path = pathRef.current;
@@ -128,6 +131,55 @@ export default function TrackMap({ circuitId, demoCars = 6, replayT }: Props) {
   const labelRight = typeof replayT === "number" ? "Replay" : "Auto";
   const trackLabel = geoPath ? "GeoJSON" : "Placeholder";
 
+  const inner = (
+    <>
+      {variant === "card" ? (
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
+          <h3 style={{ margin: 0 }}>Track map</h3>
+          <div style={{ fontSize: 12, opacity: 0.8 }}>
+            {trackLabel} • {labelRight}
+          </div>
+        </div>
+      ) : null}
+
+      <div style={{ marginTop: variant === "card" ? 10 : 0 }}>
+        <svg
+          viewBox="0 0 160 120"
+          width="100%"
+          height={height}
+          role="img"
+          aria-label={`Track map for ${circuitId}`}
+          style={{ display: "block" }}
+        >
+          <path d={d} fill="none" stroke="currentColor" strokeWidth="10" opacity="0.15" />
+
+          <path
+            ref={pathRef}
+            d={d}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            opacity="0.92"
+          />
+
+          {points.map((p) => (
+            <circle key={p.id} cx={p.x} cy={p.y} r="3.3" />
+          ))}
+
+          {variant === "card" ? (
+            <text x="8" y="16" fontSize="10" opacity="0.75">
+              {circuitId}
+            </text>
+          ) : null}
+        </svg>
+      </div>
+    </>
+  );
+
+  if (variant === "embedded") return inner;
+
   return (
     <div
       style={{
@@ -137,46 +189,7 @@ export default function TrackMap({ circuitId, demoCars = 6, replayT }: Props) {
         margin: "1rem 0",
       }}
     >
-      <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
-        <h3 style={{ margin: 0 }}>Track map</h3>
-        <div style={{ fontSize: 12, opacity: 0.8 }}>
-          {trackLabel} • {labelRight}
-        </div>
-      </div>
-
-      <div style={{ marginTop: 10 }}>
-        <svg
-          viewBox="0 0 160 120"
-          width="100%"
-          height="260"
-          role="img"
-          aria-label={`Track map for ${circuitId}`}
-          style={{ display: "block" }}
-        >
-          <path
-            ref={pathRef}
-            d={d}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="6"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            opacity="0.9"
-          />
-
-          {/* Start/finish marker placeholder */}
-          <circle cx="30" cy="60" r="5" />
-
-          {/* Car dots */}
-          {points.map((p) => (
-            <circle key={p.id} cx={p.x} cy={p.y} r="3.3" />
-          ))}
-
-          <text x="8" y="16" fontSize="10" opacity="0.75">
-            {circuitId}
-          </text>
-        </svg>
-      </div>
+      {inner}
     </div>
   );
 }

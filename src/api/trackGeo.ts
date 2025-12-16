@@ -26,13 +26,36 @@ export async function getAllCircuitGeo(): Promise<GeoJSONFeatureCollection> {
   return cached;
 }
 
-// Small starter map. Add more as you hit circuits that don't match.
+// Add more as you hit circuits that don't match.
+// Keys MUST match Ergast/Jolpica circuitId (race.Circuit.circuitId).
 const CIRCUIT_NAME_HINTS: Record<string, string[]> = {
+  // Europe
   monza: ["Monza", "Autodromo Nazionale Monza"],
   silverstone: ["Silverstone"],
   spa: ["Spa", "Spa-Francorchamps", "Circuit de Spa-Francorchamps"],
   monaco: ["Monaco", "Circuit de Monaco"],
+  hungaroring: ["Hungaroring"],
+  zandvoort: ["Zandvoort"],
+  red_bull_ring: ["Red Bull Ring", "Spielberg"],
+  imola: ["Imola", "Enzo e Dino Ferrari"],
+
+  // Asia / Middle East
   suzuka: ["Suzuka", "Suzuka International Racing Course"],
+  yas_marina: ["Yas Marina"],
+  sakhir: ["Bahrain", "Sakhir"],
+  jeddah: ["Jeddah"],
+  losail: ["Losail"],
+
+  // Americas
+  interlagos: ["Interlagos", "São Paulo", "Sao Paulo"],
+  americas: ["Circuit of the Americas", "COTA"],
+  miami: ["Miami"],
+  mexico: ["Hermanos Rodríguez", "Hermanos Rodriguez", "Mexico City"],
+  vegas: ["Las Vegas"],
+  montreal: ["Gilles Villeneuve", "Montreal"],
+
+  // Oceania
+  albert_park: ["Albert Park", "Melbourne"],
 };
 
 export async function getCircuitLineString(
@@ -44,10 +67,25 @@ export async function getCircuitLineString(
 
   const match = fc.features.find((f) => {
     const p = f.properties ?? {};
-    const hay = `${p.name ?? ""} ${p.Name ?? ""} ${p.location ?? ""} ${
-      p.Location ?? ""
-    }`.toLowerCase();
-    return hints.some((h) => hay.includes(h.toLowerCase()));
+
+    // Some datasets use different property keys, so we combine a bunch.
+    const hay = [
+      p.name,
+      p.Name,
+      p.location,
+      p.Location,
+      p.circuit,
+      p.Circuit,
+      p.country,
+      p.Country,
+      p.city,
+      p.City,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase();
+
+    return hints.some((h) => hay.includes(String(h).toLowerCase()));
   });
 
   if (!match) return null;

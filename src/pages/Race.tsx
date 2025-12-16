@@ -5,11 +5,14 @@ import type { JolpicaRace, JolpicaResult, JolpicaSession } from "../types/f1";
 import CircuitHeader from "../components/CircuitHeader";
 import TrackMap from "../components/TrackMap";
 import RaceSummary from "../components/RaceSummary";
+import "../App.css";
 
 type State =
   | { status: "loading" }
   | { status: "error"; message: string }
   | { status: "ready"; race: JolpicaRace; results: JolpicaResult[] | null };
+
+type Tab = "results" | "sessions";
 
 function formatLocal(dt: Date) {
   return new Intl.DateTimeFormat(undefined, {
@@ -33,16 +36,13 @@ function driverName(r: JolpicaResult) {
 }
 
 function finishOrStatus(r: JolpicaResult) {
-  return r.Time?.time ?? r.status;
+  return (r as any).Time?.time ?? (r as any).status ?? "-";
 }
 
 export default function Race() {
   const { year, round } = useParams();
   const [state, setState] = useState<State>({ status: "loading" });
-
-  // Replay controls
-  const [auto, setAuto] = useState(true);
-  const [slider, setSlider] = useState(0.15); // 0..1
+  const [tab, setTab] = useState<Tab>("results");
 
   useEffect(() => {
     let cancelled = false;
@@ -62,13 +62,11 @@ export default function Race() {
         if (!race) throw new Error("Race not found");
 
         const res = await getRaceResults(y, r);
+        const results = res?.results?.length ? res.results : null;
 
         if (!cancelled) {
-          setState({
-            status: "ready",
-            race,
-            results: res?.results?.length ? res.results : null,
-          });
+          setState({ status: "ready", race, results });
+          setTab(results ? "results" : "sessions");
         }
       } catch (e) {
         if (!cancelled) {
@@ -106,144 +104,138 @@ export default function Race() {
   }, [state]);
 
   if (state.status === "loading") {
-    return <div style={{ padding: "2rem" }}>Loading…</div>;
+    return (
+      <div className="container">
+        <div className="card">
+          <p className="small" style={{ margin: 0 }}>Loading…</p>
+        </div>
+      </div>
+    );
   }
 
   if (state.status === "error") {
     return (
-      <div style={{ padding: "2rem" }}>
-        <p>Error: {state.message}</p>
-        <Link to="/season">Back to season</Link>
+      <div className="container">
+        <div className="card">
+          <p style={{ color: "crimson", margin: 0 }}>Error: {state.message}</p>
+          <div style={{ marginTop: 12 }}>
+            <Link className="pill" to="/season">← Back to season</Link>
+          </div>
+        </div>
       </div>
     );
   }
 
   const { race, results } = state;
+  const dt = raceStartLocal(race);
 
   return (
-    <div style={{ padding: "2rem", fontFamily: "system-ui" }}>
-      <Link to="/season">← Back to season</Link>
-
-      <h1 style={{ marginBottom: "0.25rem" }}>{race.raceName}</h1>
-      <div style={{ opacity: 0.85, marginBottom: "0.75rem" }}>
-        {race.Circuit.Location.locality}, {race.Circuit.Location.country}
-      </div>
-
-      <CircuitHeader race={race} />
-
-      {/* Replay controls */}
-      <div
-        style={{
-          border: "1px solid #ddd",
-          borderRadius: 12,
-          padding: "1rem",
-          margin: "1rem 0",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
-          <strong>Replay</strong>
-
-          <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-            <input
-              type="checkbox"
-              checked={auto}
-              onChange={(e) => setAuto(e.target.checked)}
-            />
-            Auto
-          </label>
+    <div className="container">
+      <div className="headerRow">
+        <div>
+          <Link className="pill" to="/season">← Back</Link>
+          <h1 className="hTitle" style={{ marginTop: 10 }}>{race.raceName}</h1>
+          <div className="small">
+            {race.Circuit.Location.locality}, {race.Circuit.Location.country} • {formatLocal(dt)}
+          </div>
         </div>
 
-        <div style={{ marginTop: 10 }}>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={Math.round(slider * 100)}
-            onChange={(e) => setSlider(Number(e.target.value) / 100)}
-            disabled={auto}
-            style={{ width: "100%" }}
-          />
-        </div>
-
-        <div style={{ marginTop: 6, fontSize: 12, opacity: 0.8 }}>
-          {auto ? "Dots move automatically (demo)." : `Replay position: ${Math.round(slider * 100)}%`}
+        <div className="pillRow">
+          <Link className="pill" to={`/standings/${race.season}`}>Standings</Link>
+          <Link className="pill" to="/">Home</Link>
         </div>
       </div>
 
-      <TrackMap circuitId={race.Circuit.circuitId} replayT={auto ? undefined : slider} />
+      <div className="card">
+        <div className="subRow">
+          <span className="badge">Year {race.season}</span>
+          <span className="badge">Round {race.round}</span>
+          <span className="badge">{race.Circuit.circuitName}</span>
+        </div>
 
-      {results ? (
-        <>
-          <RaceSummary results={results} />
+        <CircuitHeader race={race} />
 
-          <h2>Race results</h2>
+        {/* Track map (auto mode only) */}
+        <div className="trackCard" style={{ marginTop: 14 }}>
+          <TrackMap circuitId={race.Circuit.circuitId} />
+        </div>
 
-          <div style={{ overflowX: "auto" }}>
-            <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 760 }}>
-              <thead>
-                <tr>
-                  {["Pos", "Driver", "Team", "Grid", "Laps", "Time / Status", "Pts"].map((h) => (
-                    <th
-                      key={h}
-                      style={{
-                        textAlign: "left",
-                        borderBottom: "1px solid #ddd",
-                        padding: "8px",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {h}
-                    </th>
+        <div className="tabs" style={{ marginTop: 16 }}>
+          <button
+            className={`tab ${tab === "results" ? "tabActive" : ""}`}
+            onClick={() => setTab("results")}
+            disabled={!results}
+          >
+            Results
+          </button>
+          <button
+            className={`tab ${tab === "sessions" ? "tabActive" : ""}`}
+            onClick={() => setTab("sessions")}
+          >
+            Weekend sessions
+          </button>
+        </div>
+
+        {tab === "results" && results && (
+          <>
+            <RaceSummary results={results} />
+
+            <div className="tableWrap" style={{ marginTop: 12 }}>
+              <table className="table" style={{ minWidth: 860 }}>
+                <thead className="thead">
+                  <tr>
+                    {["Pos", "Driver", "Team", "Grid", "Laps", "Time / Status", "Pts"].map((h) => (
+                      <th key={h} className="th">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {results.map((r) => (
+                    <tr className="row" key={`${r.position}-${r.Driver.driverId}`}>
+                      <td className="td pos"><span className="badge">{r.position}</span></td>
+                      <td className="td">
+                        <Link to={`/driver/${race.season}/${r.Driver.driverId}`}>
+                          <strong>{driverName(r)}</strong>
+                        </Link>
+                      </td>
+                      <td className="td">
+                        <Link to={`/team/${race.season}/${r.Constructor.constructorId}`}>
+                          {r.Constructor.name}
+                        </Link>
+                      </td>
+                      <td className="td">{(r as any).grid ?? "-"}</td>
+                      <td className="td">{(r as any).laps ?? "-"}</td>
+                      <td className="td">{finishOrStatus(r)}</td>
+                      <td className="td points"><strong>{(r as any).points ?? "-"}</strong></td>
+                    </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+
+        {tab === "sessions" && (
+          <div className="tableWrap" style={{ marginTop: 12 }}>
+            <table className="table">
+              <thead className="thead">
+                <tr>
+                  <th className="th">Session</th>
+                  <th className="th">Local time</th>
                 </tr>
               </thead>
               <tbody>
-                {results.map((r) => (
-                  <tr key={`${r.position}-${r.Driver.driverId}-${r.Constructor.constructorId}`}>
-                    <td style={{ padding: "8px", borderBottom: "1px solid #f0f0f0" }}>
-                      {r.position}
-                    </td>
-                    <td style={{ padding: "8px", borderBottom: "1px solid #f0f0f0" }}>
-                      {driverName(r)}
-                    </td>
-                    <td style={{ padding: "8px", borderBottom: "1px solid #f0f0f0" }}>
-                      {r.Constructor.name}
-                    </td>
-                    <td style={{ padding: "8px", borderBottom: "1px solid #f0f0f0" }}>
-                      {r.grid ?? "-"}
-                    </td>
-                    <td style={{ padding: "8px", borderBottom: "1px solid #f0f0f0" }}>
-                      {r.laps ?? "-"}
-                    </td>
-                    <td style={{ padding: "8px", borderBottom: "1px solid #f0f0f0" }}>
-                      {finishOrStatus(r)}
-                    </td>
-                    <td style={{ padding: "8px", borderBottom: "1px solid #f0f0f0" }}>
-                      {r.points}
-                    </td>
+                {sessions.map((x) => (
+                  <tr className="row" key={x.label}>
+                    <td className="td"><strong>{x.label}</strong></td>
+                    <td className="td">{formatLocal(sessionToLocal(x.s))}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-        </>
-      ) : (
-        <>
-          <h2>Weekend sessions</h2>
-
-          <ul style={{ paddingLeft: "1.25rem" }}>
-            {sessions.map((x) => (
-              <li key={x.label} style={{ marginBottom: "0.5rem" }}>
-                <strong>{x.label}:</strong> {formatLocal(sessionToLocal(x.s))}
-              </li>
-            ))}
-          </ul>
-
-          <p>
-            <strong>Race start:</strong> {formatLocal(raceStartLocal(race))}
-          </p>
-        </>
-      )}
+        )}
+      </div>
     </div>
   );
 }
