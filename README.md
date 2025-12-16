@@ -1,73 +1,92 @@
-# React + TypeScript + Vite
+# 🏎️ F1 Tracker Web App
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern Formula 1 web application focused on **season browsing, race details, standings, and circuit visualization**, built with a clean UI-first approach.
 
-Currently, two official plugins are available:
+Live telemetry is intentionally paused while the core experience is polished.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+---
 
-## React Compiler
+## 🚀 Project Overview
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+This project is a Formula 1 data explorer that allows users to:
 
-## Expanding the ESLint configuration
+- Browse **full F1 seasons**
+- View **race weekends and results**
+- Explore **driver & constructor standings**
+- See **real circuit outlines** for each race
+- Preview the **next upcoming race with a live countdown**
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+The app emphasizes:
+- Clear navigation
+- Consistent dark UI
+- Smooth animations
+- Readable data presentation
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+---
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## ✨ Key Features
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+### 🗓️ Season View
+- Full season calendar
+- Upcoming and completed races
+- Race cards with location, date, and circuit info
+- Clean grid layout with hover motion
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+### 🏁 Race Page
+- Race header with circuit details
+- Embedded **track outline map** (no placeholders)
+- Race results table
+- Session fallback when results are not available
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### 📊 Standings
+- Driver standings
+- Constructor standings
+- Tabbed UI
+- Responsive tables
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+### ⏱️ Next Race Countdown
+- Automatically finds the **next upcoming race**
+- Works across seasons (e.g. early 2026 races)
+- Live countdown (days / hours / minutes)
+- Embedded circuit map preview
+
+### 🎨 UI & Motion
+- Dark F1-inspired theme
+- Global hover lift + glow
+- Animated aurora-style background
+- Responsive layout for mobile and desktop
+- Reduced-motion support for accessibility
+
+---
+
+## 🧠 Design Decisions
+
+- **Live tracking paused**  
+  Live telemetry is intentionally disabled to focus on UI stability and clarity.
+
+- **UI-first development**  
+  Layout, spacing, and visual hierarchy were prioritized before advanced data features.
+
+- **Real circuit outlines**  
+  Each race loads the correct track shape instead of placeholders.
+
+- **No external UI frameworks**  
+  Styling is custom CSS for full control and performance.
+
+---
+
+## 🛠️ Tech Stack
+
+- **Frontend:** React + TypeScript
+- **Routing:** React Router
+- **Styling:** Custom CSS (no frameworks)
+- **Data Source:** Jolpica / Ergast-style F1 APIs
+- **Build Tool:** Vite
+- **Deployment:** GitHub Pages 
+
+---
+
+
+
+
+
