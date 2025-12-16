@@ -12,6 +12,9 @@ type Props = {
   onSelectDriver?: (driverNumber: number | null) => void;
 
   lockCamera?: boolean;
+
+  // Option B: overlay (already converted into OpenF1 x/y space)
+  trackOverlay?: Array<{ x: number; y: number }>;
 };
 
 type Dot = {
@@ -86,6 +89,7 @@ export default function OpenF1Map({
   selectedDriverNumber = null,
   onSelectDriver,
   lockCamera = false,
+  trackOverlay,
 }: Props) {
   const visualPoints = smoothPoints ?? points;
 
@@ -122,9 +126,15 @@ export default function OpenF1Map({
     return dots.find((d) => d.driver_number === selectedDriverNumber) ?? null;
   }, [dots, selectedDriverNumber]);
 
-  // --------- Candidate bounds (prefer outline; otherwise use whatever we have) ----------
   const candidateBounds = useMemo(() => {
-    // Best: outline
+    // Prefer overlay bounds (best “instant fit” once available)
+    if (trackOverlay && trackOverlay.length >= 10) {
+      const xs = trackOverlay.map((p) => p.x);
+      const ys = trackOverlay.map((p) => p.y);
+      return boundsFromXY(xs, ys, 260);
+    }
+
+    // Best: traced outline
     if (outline.length >= 10) {
       const xs = outline.map((p) => p.x);
       const ys = outline.map((p) => p.y);
@@ -146,9 +156,8 @@ export default function OpenF1Map({
     }
 
     return null;
-  }, [outline, points, dots]);
+  }, [trackOverlay, outline, points, dots]);
 
-  // --------- Stable bounds (don’t zoom in; only expand; also fix bad first bounds) ----------
   const stableBoundsRef = useRef<Bounds | null>(null);
 
   useEffect(() => {
@@ -156,8 +165,6 @@ export default function OpenF1Map({
 
     const prev = stableBoundsRef.current;
 
-    // If this is the first bounds, make it safer by enforcing a minimum size
-    // based on candidate size (not a fixed magic number).
     const candW = candidateBounds.maxX - candidateBounds.minX;
     const candH = candidateBounds.maxY - candidateBounds.minY;
 
@@ -171,15 +178,12 @@ export default function OpenF1Map({
       return;
     }
 
-    // Only expand from there
     stableBoundsRef.current = expand(prev, safeCandidate);
   }, [candidateBounds]);
 
   const viewBox = useMemo(() => {
     const b = stableBoundsRef.current;
 
-    // IMPORTANT: never use 0 0 100 100 (it hides your real coordinates)
-    // If we still have no bounds, return a very large default window.
     if (!b) return "-10000 -10000 20000 20000";
 
     const w = b.maxX - b.minX;
@@ -198,6 +202,7 @@ export default function OpenF1Map({
   }, [lockCamera, focusedDot]);
 
   const hasFocus = typeof selectedDriverNumber === "number";
+  const tracedOpacity = trackOverlay && trackOverlay.length >= 10 ? 0.06 : 0.14;
 
   return (
     <div
@@ -247,13 +252,27 @@ export default function OpenF1Map({
         style={{ display: "block", marginTop: 10, cursor: onSelectDriver ? "pointer" : "default" }}
         onClick={() => onSelectDriver?.(null)}
       >
+        {/* Geo overlay (already in OpenF1 x/y space) */}
+        {trackOverlay && trackOverlay.length >= 10 ? (
+          <polyline
+            points={trackOverlay.map((p) => `${p.x},${p.y}`).join(" ")}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="38"
+            opacity="0.22"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+        ) : null}
+
+        {/* Traced outline (fallback / assist) */}
         {outline.length >= 10 ? (
           <polyline
             points={outline.map((p) => `${p.x},${p.y}`).join(" ")}
             fill="none"
             stroke="currentColor"
             strokeWidth="40"
-            opacity="0.14"
+            opacity={tracedOpacity}
             strokeLinejoin="round"
             strokeLinecap="round"
           />
@@ -274,7 +293,7 @@ export default function OpenF1Map({
           const focused = selectedDriverNumber === d.driver_number;
           const dim = hasFocus && !focused;
 
-          const r = focused ? 48 : 35;
+          const r = focused ? 52 : 40; // bigger for easier clicking
           const opacity = dim ? 0.2 : 1;
 
           return (
@@ -300,7 +319,7 @@ export default function OpenF1Map({
               {focused && (
                 <text
                   x={d.x}
-                  y={d.y - 55}
+                  y={d.y - 60}
                   textAnchor="middle"
                   fontSize={18}
                   fill="currentColor"

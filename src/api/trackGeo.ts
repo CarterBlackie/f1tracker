@@ -26,8 +26,8 @@ export async function getAllCircuitGeo(): Promise<GeoJSONFeatureCollection> {
   return cached;
 }
 
-// Add more as you hit circuits that don't match.
-// Keys MUST match Ergast/Jolpica circuitId (race.Circuit.circuitId).
+// Keys are Ergast/Jolpica circuitId when you have it.
+// We can keep this, but Live will also use hint-based search.
 const CIRCUIT_NAME_HINTS: Record<string, string[]> = {
   // Europe
   monza: ["Monza", "Autodromo Nazionale Monza"],
@@ -38,60 +38,54 @@ const CIRCUIT_NAME_HINTS: Record<string, string[]> = {
   zandvoort: ["Zandvoort"],
   red_bull_ring: ["Red Bull Ring", "Spielberg"],
   imola: ["Imola", "Enzo e Dino Ferrari"],
+  catalunya: ["Barcelona", "Catalunya", "Circuit de Barcelona-Catalunya"],
+  baku: ["Baku", "Bakı", "Baki", "Baku City Circuit"],
+  singapore: ["Singapore", "Marina Bay"],
 
   // Asia / Middle East
   suzuka: ["Suzuka", "Suzuka International Racing Course"],
-  yas_marina: ["Yas Marina"],
+  yas_marina: ["Yas Marina", "Abu Dhabi"],
   sakhir: ["Bahrain", "Sakhir"],
-  jeddah: ["Jeddah"],
-  losail: ["Losail"],
+  jeddah: ["Jeddah", "Saudi"],
+  losail: ["Losail", "Lusail", "Qatar"],
+  shanghai: ["Shanghai", "Chinese Grand Prix"],
 
   // Americas
   interlagos: ["Interlagos", "São Paulo", "Sao Paulo"],
-  americas: ["Circuit of the Americas", "COTA"],
+  americas: ["Circuit of the Americas", "COTA", "Austin"],
   miami: ["Miami"],
   mexico: ["Hermanos Rodríguez", "Hermanos Rodriguez", "Mexico City"],
   vegas: ["Las Vegas"],
-  montreal: ["Gilles Villeneuve", "Montreal"],
+  montreal: ["Gilles Villeneuve", "Montreal", "Montréal"],
 
   // Oceania
   albert_park: ["Albert Park", "Melbourne"],
 };
 
-export async function getCircuitLineString(
-  circuitId: string
-): Promise<Array<[number, number]> | null> {
-  const fc = await getAllCircuitGeo();
+function featureHaystack(props: Record<string, any>) {
+  const p = props ?? {};
+  return [
+    p.name,
+    p.Name,
+    p.location,
+    p.Location,
+    p.circuit,
+    p.Circuit,
+    p.country,
+    p.Country,
+    p.city,
+    p.City,
+    p.state,
+    p.State,
+    p.region,
+    p.Region,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
 
-  const hints = CIRCUIT_NAME_HINTS[circuitId] ?? [circuitId];
-
-  const match = fc.features.find((f) => {
-    const p = f.properties ?? {};
-
-    // Some datasets use different property keys, so we combine a bunch.
-    const hay = [
-      p.name,
-      p.Name,
-      p.location,
-      p.Location,
-      p.circuit,
-      p.Circuit,
-      p.country,
-      p.Country,
-      p.city,
-      p.City,
-    ]
-      .filter(Boolean)
-      .join(" ")
-      .toLowerCase();
-
-    return hints.some((h) => hay.includes(String(h).toLowerCase()));
-  });
-
-  if (!match) return null;
-
-  const g = match.geometry;
-
+function pickLineStringFromGeometry(g: { type: string; coordinates: any }) {
   if (g.type === "LineString") {
     return (g.coordinates as Array<[number, number]>).slice();
   }
@@ -106,6 +100,62 @@ export async function getCircuitLineString(
   }
 
   return null;
+}
+
+function normalizeHint(s: string) {
+  return String(s)
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+}
+
+function findByHints(
+  fc: GeoJSONFeatureCollection,
+  hints: string[]
+): Array<[number, number]> | null {
+  const cleanHints = hints
+    .map(normalizeHint)
+    .filter((h) => h.length >= 3); // ignore tiny tokens
+
+  if (!cleanHints.length) return null;
+
+  const match = fc.features.find((f) => {
+    const hay = featureHaystack(f.properties ?? {});
+    return cleanHints.some((h) => hay.includes(h));
+  });
+
+  if (!match) return null;
+  return pickLineStringFromGeometry(match.geometry);
+}
+
+/**
+ * Original API: tries CIRCUIT_NAME_HINTS first, otherwise uses the id as a hint.
+ */
+export async function getCircuitLineString(
+  circuitId: string
+): Promise<Array<[number, number]> | null> {
+  const fc = await getAllCircuitGeo();
+
+  const hints = CIRCUIT_NAME_HINTS[circuitId] ?? [circuitId];
+
+  // Try hints, then try a normalized variant
+  return (
+    findByHints(fc, hints) ??
+    findByHints(fc, [normalizeHint(circuitId)]) ??
+    null
+  );
+}
+
+/**
+ * NEW: best-effort search that does not require a known circuitId key.
+ * Pass things like: circuit_short_name, city, country, "Losail", "Qatar", etc.
+ */
+export async function getCircuitLineStringByHints(
+  hints: string[]
+): Promise<Array<[number, number]> | null> {
+  const fc = await getAllCircuitGeo();
+  return findByHints(fc, hints);
 }
 
 export function lineToSvgPath(
