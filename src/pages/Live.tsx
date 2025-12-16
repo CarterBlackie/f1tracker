@@ -16,6 +16,7 @@ import type {
   OpenF1Lap,
 } from "../types/openf1";
 import OpenF1Map from "../components/OpenF1Map";
+import { resetTrackOutline } from "../utils/openf1Track";
 
 type LoadState =
   | { status: "idle" }
@@ -57,7 +58,9 @@ function latestLapPerDriver(laps: OpenF1Lap[]) {
   const map = new Map<number, OpenF1Lap>();
   for (const l of laps) {
     const prev = map.get(l.driver_number);
-    if (!prev || prev.date_start < l.date_start) map.set(l.driver_number, l);
+    if (!prev || prev.date_start < l.date_start) {
+      map.set(l.driver_number, l);
+    }
   }
   return map;
 }
@@ -65,6 +68,8 @@ function latestLapPerDriver(laps: OpenF1Lap[]) {
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
 }
+
+const INTERP_MS = 1200; // fixed window so we don’t “collapse” when API repeats buckets
 
 export default function Live() {
   const thisYear = new Date().getFullYear();
@@ -81,7 +86,7 @@ export default function Live() {
   // visual-only (interpolated)
   const [smoothLoc, setSmoothLoc] = useState<OpenF1LocationPoint[]>([]);
 
-  const [t01, setT01] = useState(0.15);
+  const [t01, setT01] = useState(0.5);
   const [auto, setAuto] = useState(true);
   const [state, setState] = useState<LoadState>({ status: "idle" });
 
@@ -98,8 +103,9 @@ export default function Live() {
   // interpolation buffers
   const prevSliceRef = useRef<Map<number, OpenF1LocationPoint> | null>(null);
   const currSliceRef = useRef<Map<number, OpenF1LocationPoint> | null>(null);
-  const currSliceTimeRef = useRef<number>(0);
-  const prevSliceTimeRef = useRef<number>(0);
+
+  // time when the current interpolation window started
+  const interpStartRef = useRef<number>(0);
 
   // Load sessions when year changes
   useEffect(() => {
@@ -141,6 +147,7 @@ export default function Live() {
   // Load drivers when session changes
   useEffect(() => {
     if (!sessionKey) return;
+    resetTrackOutline();
     let cancelled = false;
 
     (async () => {
@@ -158,6 +165,7 @@ export default function Live() {
 
         prevSliceRef.current = null;
         currSliceRef.current = null;
+        interpStartRef.current = performance.now();
 
         setSelectedDriverNumber(null);
         setLockCamera(false);
@@ -185,7 +193,7 @@ export default function Live() {
     if (rateLimitUntil && Date.now() < rateLimitUntil) return;
 
     const tickMs = 600;
-    const speedPerTick = 0.0006; // slower than before
+    const speedPerTick = 0.0006;
 
     const id = window.setInterval(() => {
       setT01((prev) => (prev + speedPerTick) % 1);
@@ -220,23 +228,29 @@ export default function Live() {
 
         if (cancelled) return;
 
+        // If this moment has no telemetry, skip ahead a bit (Auto mode only)
+        if (auto && locPoints.length === 0 && posPoints.length === 0) {
+          setT01((t) => Math.min(1, t + 0.01));
+          return;
+        }
+
         setLoc(locPoints);
         setPos(posPoints);
         setLaps(lapPoints);
 
         // update interpolation buffers
         const now = performance.now();
-        const currMap = latestPerDriverLocation(locPoints);
+        const nextMap = latestPerDriverLocation(locPoints);
 
         prevSliceRef.current = currSliceRef.current;
-        prevSliceTimeRef.current = currSliceTimeRef.current;
+        currSliceRef.current = nextMap;
 
-        currSliceRef.current = currMap;
-        currSliceTimeRef.current = now;
+        // start a fresh interpolation window now
+        interpStartRef.current = now;
 
+        // first slice: no prev yet
         if (!prevSliceRef.current) {
-          prevSliceRef.current = currMap;
-          prevSliceTimeRef.current = now;
+          prevSliceRef.current = nextMap;
         }
 
         if (state.status === "error") setState({ status: "ready" });
@@ -248,7 +262,6 @@ export default function Live() {
         if (msg.includes("HTTP 429")) {
           const until = Date.now() + 15000;
           setRateLimitUntil(until);
-          setAuto(false);
           setState({ status: "error", message: "Rate limited (429). Paused Auto for 15s." });
           return;
         }
@@ -260,9 +273,9 @@ export default function Live() {
     return () => {
       cancelled = true;
     };
-  }, [sessionKey, session, t01, rateLimitUntil, state.status]);
+  }, [sessionKey, session, t01, rateLimitUntil, state.status, auto]);
 
-  // Interpolation loop: throttle React updates (~30fps) so it feels smooth but doesn’t lag
+  // Interpolation loop: commit ~30fps
   useEffect(() => {
     let raf = 0;
     let lastCommit = 0;
@@ -272,13 +285,9 @@ export default function Live() {
       const currMap = currSliceRef.current;
 
       if (prevMap && currMap) {
-        const t0 = prevSliceTimeRef.current;
-        const t1 = currSliceTimeRef.current;
+        const t0 = interpStartRef.current;
+        const t = Math.max(0, Math.min(1, (now - t0) / INTERP_MS));
 
-        const denom = Math.max(1, t1 - t0);
-        const t = Math.max(0, Math.min(1, (now - t0) / denom));
-
-        // commit at most every ~33ms
         if (now - lastCommit >= 33) {
           const out: OpenF1LocationPoint[] = [];
 
@@ -368,7 +377,7 @@ export default function Live() {
   };
 
   const stableRow: React.CSSProperties = {
-    minHeight: 22, // reserve for status text
+    minHeight: 22,
     display: "flex",
     alignItems: "center",
   };
@@ -380,7 +389,7 @@ export default function Live() {
     background: "rgba(0,0,0,0.03)",
     display: "grid",
     gap: 6,
-    minHeight: 150, // reserve space so it doesn't jump
+    minHeight: 150,
   };
 
   return (
@@ -390,9 +399,7 @@ export default function Live() {
         <Link to="/season">Season</Link>
       </div>
 
-      <p style={{ opacity: 0.8, marginTop: 8 }}>
-        Pick a race session, then scrub through it.
-      </p>
+      <p style={{ opacity: 0.8, marginTop: 8 }}>Pick a race session, then scrub through it.</p>
 
       <div style={{ ...cardStyle, display: "grid", gap: "0.75rem" }}>
         <div style={{ display: "grid", gap: 6 }}>
@@ -421,15 +428,7 @@ export default function Live() {
 
         <div style={{ display: "flex", justifyContent: "space-between", gap: "1rem" }}>
           <label style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-            <input
-              type="checkbox"
-              checked={auto}
-              onChange={(e) => {
-                const next = e.target.checked;
-                if (next && rateLimitUntil && Date.now() < rateLimitUntil) return;
-                setAuto(next);
-              }}
-            />
+            <input type="checkbox" checked={auto} onChange={(e) => setAuto(e.target.checked)} />
             Auto
           </label>
 
@@ -454,7 +453,6 @@ export default function Live() {
           </div>
         </div>
 
-        {/* Focus panel always rendered to prevent layout jump */}
         <div style={focusedPanelStyle}>
           {focusedDriver ? (
             <>
@@ -512,24 +510,18 @@ export default function Live() {
           ) : (
             <div style={{ opacity: 0.75 }}>
               <strong>No driver selected</strong>
-              <div style={{ marginTop: 6, fontSize: 12 }}>
-                Click a dot or a row to focus a driver.
-              </div>
+              <div style={{ marginTop: 6, fontSize: 12 }}>Click a dot or a row to focus a driver.</div>
             </div>
           )}
         </div>
 
-        {/* Stable status area (always same height) */}
         <div style={stableRow}>
           {rateMsg ? (
             <div style={{ color: "crimson" }}>{rateMsg}</div>
           ) : state.status === "error" ? (
             <div style={{ color: "crimson" }}>{state.message}</div>
           ) : (
-            <div style={{ opacity: 0.6, fontSize: 12 }}>
-              {/* placeholder keeps height stable */}
-              &nbsp;
-            </div>
+            <div style={{ opacity: 0.6, fontSize: 12 }}>&nbsp;</div>
           )}
         </div>
       </div>

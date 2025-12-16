@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { OpenF1Driver, OpenF1LocationPoint } from "../types/openf1";
 import { buildTrackOutline } from "../utils/openf1Track";
 
@@ -34,11 +34,55 @@ function pickLatestPerDriver(points: OpenF1LocationPoint[]) {
   return [...map.values()];
 }
 
+type Bounds = { minX: number; maxX: number; minY: number; maxY: number };
+
+function boundsFromXY(xs: number[], ys: number[], pad: number): Bounds | null {
+  if (!xs.length || !ys.length) return null;
+  const minX = Math.min(...xs) - pad;
+  const maxX = Math.max(...xs) + pad;
+  const minY = Math.min(...ys) - pad;
+  const maxY = Math.max(...ys) + pad;
+  if (maxX - minX < 1e-6 || maxY - minY < 1e-6) return null;
+  return { minX, maxX, minY, maxY };
+}
+
+function expand(prev: Bounds, next: Bounds): Bounds {
+  return {
+    minX: Math.min(prev.minX, next.minX),
+    maxX: Math.max(prev.maxX, next.maxX),
+    minY: Math.min(prev.minY, next.minY),
+    maxY: Math.max(prev.maxY, next.maxY),
+  };
+}
+
+function ensureMinSize(b: Bounds, minW: number, minH: number): Bounds {
+  let { minX, maxX, minY, maxY } = b;
+
+  let w = maxX - minX;
+  let h = maxY - minY;
+
+  if (w < minW) {
+    const cx = (minX + maxX) / 2;
+    minX = cx - minW / 2;
+    maxX = cx + minW / 2;
+    w = minW;
+  }
+
+  if (h < minH) {
+    const cy = (minY + maxY) / 2;
+    minY = cy - minH / 2;
+    maxY = cy + minH / 2;
+    h = minH;
+  }
+
+  return { minX, maxX, minY, maxY };
+}
+
 export default function OpenF1Map({
   drivers,
   points,
   smoothPoints,
-  title = "Replay map",
+  title = "Car positions",
   selectedDriverNumber = null,
   onSelectDriver,
   lockCamera = false,
@@ -46,7 +90,7 @@ export default function OpenF1Map({
   const visualPoints = smoothPoints ?? points;
 
   const latest = useMemo(() => pickLatestPerDriver(visualPoints), [visualPoints]);
-  const outline = useMemo(() => buildTrackOutline(points), [points]); // outline from real points
+  const outline = useMemo(() => buildTrackOutline(points), [points]);
 
   const driverByNum = useMemo(() => {
     const m = new Map<number, OpenF1Driver>();
@@ -54,15 +98,8 @@ export default function OpenF1Map({
     return m;
   }, [drivers]);
 
-  const boundsRef = useRef<{
-    minX: number;
-    maxX: number;
-    minY: number;
-    maxY: number;
-  } | null>(null);
-
   const dots: Dot[] = useMemo(() => {
-    const raw = latest
+    return latest
       .map((p) => {
         const d = driverByNum.get(p.driver_number);
         if (!d) return null;
@@ -78,21 +115,6 @@ export default function OpenF1Map({
         };
       })
       .filter(Boolean) as Dot[];
-
-    if (raw.length >= 4) {
-      const xs = raw.map((r) => r.x);
-      const ys = raw.map((r) => r.y);
-      const pad = 120;
-
-      boundsRef.current = {
-        minX: Math.min(...xs) - pad,
-        maxX: Math.max(...xs) + pad,
-        minY: Math.min(...ys) - pad,
-        maxY: Math.max(...ys) + pad,
-      };
-    }
-
-    return raw;
   }, [latest, driverByNum]);
 
   const focusedDot = useMemo(() => {
@@ -100,20 +122,80 @@ export default function OpenF1Map({
     return dots.find((d) => d.driver_number === selectedDriverNumber) ?? null;
   }, [dots, selectedDriverNumber]);
 
-  const viewBox = useMemo(() => {
-    const b = boundsRef.current;
-    if (!b) return "0 0 100 100";
-
-    if (lockCamera && focusedDot) {
-      const w = (b.maxX - b.minX) * 0.55;
-      const h = (b.maxY - b.minY) * 0.55;
-      const minX = focusedDot.x - w / 2;
-      const minY = focusedDot.y - h / 2;
-      return `${minX} ${minY} ${w} ${h}`;
+  // --------- Candidate bounds (prefer outline; otherwise use whatever we have) ----------
+  const candidateBounds = useMemo(() => {
+    // Best: outline
+    if (outline.length >= 10) {
+      const xs = outline.map((p) => p.x);
+      const ys = outline.map((p) => p.y);
+      return boundsFromXY(xs, ys, 220);
     }
 
-    return `${b.minX} ${b.minY} ${b.maxX - b.minX} ${b.maxY - b.minY}`;
-  }, [dots, lockCamera, focusedDot]);
+    // Next: raw slice cloud
+    if (points.length >= 8) {
+      const xs = points.map((p) => p.x);
+      const ys = points.map((p) => p.y);
+      return boundsFromXY(xs, ys, 280);
+    }
+
+    // Fallback: dots
+    if (dots.length >= 2) {
+      const xs = dots.map((d) => d.x);
+      const ys = dots.map((d) => d.y);
+      return boundsFromXY(xs, ys, 320);
+    }
+
+    return null;
+  }, [outline, points, dots]);
+
+  // --------- Stable bounds (don’t zoom in; only expand; also fix bad first bounds) ----------
+  const stableBoundsRef = useRef<Bounds | null>(null);
+
+  useEffect(() => {
+    if (!candidateBounds) return;
+
+    const prev = stableBoundsRef.current;
+
+    // If this is the first bounds, make it safer by enforcing a minimum size
+    // based on candidate size (not a fixed magic number).
+    const candW = candidateBounds.maxX - candidateBounds.minX;
+    const candH = candidateBounds.maxY - candidateBounds.minY;
+
+    const minW = Math.max(6000, candW * 1.2);
+    const minH = Math.max(6000, candH * 1.2);
+
+    const safeCandidate = ensureMinSize(candidateBounds, minW, minH);
+
+    if (!prev) {
+      stableBoundsRef.current = safeCandidate;
+      return;
+    }
+
+    // Only expand from there
+    stableBoundsRef.current = expand(prev, safeCandidate);
+  }, [candidateBounds]);
+
+  const viewBox = useMemo(() => {
+    const b = stableBoundsRef.current;
+
+    // IMPORTANT: never use 0 0 100 100 (it hides your real coordinates)
+    // If we still have no bounds, return a very large default window.
+    if (!b) return "-10000 -10000 20000 20000";
+
+    const w = b.maxX - b.minX;
+    const h = b.maxY - b.minY;
+
+    if (lockCamera && focusedDot) {
+      const zoom = 0.55;
+      const vw = w * zoom;
+      const vh = h * zoom;
+      const cx = focusedDot.x;
+      const cy = focusedDot.y;
+      return `${cx - vw / 2} ${cy - vh / 2} ${vw} ${vh}`;
+    }
+
+    return `${b.minX} ${b.minY} ${w} ${h}`;
+  }, [lockCamera, focusedDot]);
 
   const hasFocus = typeof selectedDriverNumber === "number";
 
@@ -152,6 +234,12 @@ export default function OpenF1Map({
         </div>
       </div>
 
+      {dots.length === 0 && (
+        <div style={{ opacity: 0.65, fontSize: 14, marginTop: 12 }}>
+          No telemetry data at this moment.
+        </div>
+      )}
+
       <svg
         viewBox={viewBox}
         width="100%"
@@ -159,14 +247,27 @@ export default function OpenF1Map({
         style={{ display: "block", marginTop: 10, cursor: onSelectDriver ? "pointer" : "default" }}
         onClick={() => onSelectDriver?.(null)}
       >
-        {outline.length > 10 && (
+        {outline.length >= 10 ? (
           <polyline
             points={outline.map((p) => `${p.x},${p.y}`).join(" ")}
             fill="none"
             stroke="currentColor"
             strokeWidth="40"
-            opacity="0.08"
+            opacity="0.14"
+            strokeLinejoin="round"
+            strokeLinecap="round"
           />
+        ) : (
+          points.map((p, i) => (
+            <circle
+              key={`${p.driver_number}-${p.date}-${i}`}
+              cx={p.x}
+              cy={p.y}
+              r={8}
+              opacity={0.03}
+              fill="currentColor"
+            />
+          ))
         )}
 
         {dots.map((d) => {
