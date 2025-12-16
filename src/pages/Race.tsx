@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { getRace, getRaceResults, raceStartLocal } from "../api/f1";
 import type { JolpicaRace, JolpicaResult, JolpicaSession } from "../types/f1";
+import CircuitHeader from "../components/CircuitHeader";
+import TrackMap from "../components/TrackMap";
 
 type State =
   | { status: "loading" }
@@ -30,7 +32,6 @@ function driverName(r: JolpicaResult) {
 }
 
 function finishOrStatus(r: JolpicaResult) {
-  // If there is a finishing time, show it. Else show status (DNF, +1 Lap, etc.)
   return r.Time?.time ?? r.status;
 }
 
@@ -48,10 +49,13 @@ export default function Race() {
         const y = Number(year);
         const r = Number(round);
 
+        if (!Number.isFinite(y) || !Number.isFinite(r)) {
+          throw new Error("Year/round must be numbers");
+        }
+
         const race = await getRace(y, r);
         if (!race) throw new Error("Race not found");
 
-        // results may not exist yet for future races
         const res = await getRaceResults(y, r);
 
         if (!cancelled) {
@@ -116,9 +120,13 @@ export default function Race() {
       <Link to="/season">← Back to season</Link>
 
       <h1 style={{ marginBottom: "0.25rem" }}>{race.raceName}</h1>
-      <div style={{ opacity: 0.85, marginBottom: "1rem" }}>
-        {race.Circuit.circuitName} — {race.Circuit.Location.locality}, {race.Circuit.Location.country}
+      <div style={{ opacity: 0.85, marginBottom: "0.75rem" }}>
+        {race.Circuit.Location.locality}, {race.Circuit.Location.country}
       </div>
+
+      {/* Option 2 visuals */}
+      <CircuitHeader race={race} />
+      <TrackMap circuitId={race.Circuit.circuitId} />
 
       {results ? (
         <>
@@ -176,6 +184,7 @@ export default function Race() {
       ) : (
         <>
           <h2>Weekend sessions</h2>
+
           <ul style={{ paddingLeft: "1.25rem" }}>
             {sessions.map((x) => (
               <li key={x.label} style={{ marginBottom: "0.5rem" }}>
