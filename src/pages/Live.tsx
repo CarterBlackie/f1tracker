@@ -13,11 +13,6 @@ import type {
   OpenF1Session,
 } from "../types/openf1";
 
-type LoadState =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready" };
-
 type Dot = {
   driver_number: number;
   s: number; // 0..1
@@ -35,11 +30,7 @@ const SVG_HEIGHT = 520;
 const TRACK_BG_STROKE = 12;
 const TRACK_FG_STROKE = 7;
 
-// easing (how fast current catches target)
 const SMOOTH_PER_SEC = 2.0;
-
-// prediction: caps how fast a driver can move around the loop
-// (1.0 means 1 full lap per second, which is huge; 0.25 is still fast)
 const MAX_DS_PER_SEC = 0.35;
 
 function clamp01(v: number) {
@@ -99,7 +90,8 @@ function makeProgressMapper(points: OpenF1LocationPoint[]) {
 export default function Live() {
   const YEAR = 2025;
 
-  const [load, setLoad] = useState<LoadState>({ status: "loading" });
+  const [error, setError] = useState<string | null>(null);
+
   const [sessions, setSessions] = useState<OpenF1Session[]>([]);
   const [sessionKey, setSessionKey] = useState<number | null>(null);
 
@@ -123,18 +115,12 @@ export default function Live() {
 
   const [rawPoints, setRawPoints] = useState<OpenF1LocationPoint[]>([]);
 
-  // “last known target” coming from polling
   const targetRef = useRef<Map<number, Dot>>(new Map());
-
-  // for prediction: last target s + timestamp + estimated speed
   const targetMetaRef = useRef<
     Map<number, { s: number; tMs: number; dsPerSec: number }>
   >(new Map());
 
-  // smoothed current s
   const currentRef = useRef<Map<number, number>>(new Map());
-
-  // lap estimate
   const unwrappedLapRef = useRef<Map<number, number>>(new Map());
 
   const [drawnDots, setDrawnDots] = useState<DrawnDot[]>([]);
@@ -170,23 +156,19 @@ export default function Live() {
 
     (async () => {
       try {
+        setError(null);
+
         const all = await listRaceSessions(YEAR);
         const races = all
           .filter((s) => s.session_name.toLowerCase().includes("race"))
           .sort((a, b) => Date.parse(b.date_start) - Date.parse(a.date_start));
 
-        if (!cancelled) {
-          setSessions(races);
-          setSessionKey(races[0]?.session_key ?? null);
-          setLoad({ status: "ready" });
-        }
+        if (cancelled) return;
+
+        setSessions(races);
+        setSessionKey(races[0]?.session_key ?? null);
       } catch (e: any) {
-        if (!cancelled) {
-          setLoad({
-            status: "error",
-            message: e?.message ?? "Failed to load sessions",
-          });
-        }
+        if (!cancelled) setError(e?.message ?? "Failed to load sessions");
       }
     })();
 
@@ -243,7 +225,7 @@ export default function Live() {
     };
   }, [session]);
 
-  // Second-for-second playback, scaled by speed
+  // Second-for-second playback scaled by speed
   useEffect(() => {
     if (!session || !playing || scrubbing) return;
 
@@ -294,7 +276,7 @@ export default function Live() {
     };
   }, [session]);
 
-  // Convert slice -> targets + estimate ds/dt for prediction
+  // Convert slice -> targets + ds/dt estimation
   useEffect(() => {
     if (!rawPoints.length) return;
 
@@ -308,7 +290,6 @@ export default function Live() {
     if (!mapper) return;
 
     const nowMs = performance.now();
-
     const nextTargets = new Map<number, Dot>();
 
     for (const [num, p] of latest) {
@@ -322,11 +303,9 @@ export default function Live() {
         color: d?.team_colour ? `#${d.team_colour}` : undefined,
       });
 
-      // initialize current and lap buffers
       if (!currentRef.current.has(num)) currentRef.current.set(num, s);
       if (!unwrappedLapRef.current.has(num)) unwrappedLapRef.current.set(num, 0);
 
-      // update prediction meta
       const meta = targetMetaRef.current.get(num);
       if (!meta) {
         targetMetaRef.current.set(num, { s, tMs: nowMs, dsPerSec: 0 });
@@ -335,10 +314,7 @@ export default function Live() {
         const diff = shortestWrapDiff(meta.s, s);
         let dsPerSec = diff / dt;
 
-        // clamp insane speeds so prediction doesn't go crazy
         dsPerSec = Math.max(-MAX_DS_PER_SEC, Math.min(MAX_DS_PER_SEC, dsPerSec));
-
-        // small smoothing on speed
         const blended = meta.dsPerSec * 0.6 + dsPerSec * 0.4;
 
         targetMetaRef.current.set(num, { s, tMs: nowMs, dsPerSec: blended });
@@ -348,7 +324,7 @@ export default function Live() {
     targetRef.current = nextTargets;
   }, [rawPoints, driverMap]);
 
-  // RAF: predict target continuously so dots don't "wait"
+  // RAF: predict target continuously
   useEffect(() => {
     let raf = 0;
     let last = performance.now();
@@ -369,7 +345,6 @@ export default function Live() {
       for (const [num, base] of targetRef.current) {
         const meta = targetMetaRef.current.get(num);
 
-        // predicted target
         let targetS = base.s;
         if (meta) {
           const age = Math.max(0, (now - meta.tMs) / 1000);
@@ -426,9 +401,13 @@ export default function Live() {
               : "Live"}
           </h1>
 
-          <div className="homeSub">
-            Smooth continuous motion (prediction between updates).
-          </div>
+          <div className="homeSub">Continuous dots (no stop/start).</div>
+
+          {error ? (
+            <div className="small" style={{ marginTop: 10 }}>
+              {error}
+            </div>
+          ) : null}
 
           <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
             <Link className="pill" to="/">
