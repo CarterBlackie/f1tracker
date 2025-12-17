@@ -86,7 +86,60 @@ The app emphasizes:
 
 ---
 
+## Testing Strategy
 
+This project uses **Vitest** with **React Testing Library** to ensure the application behaves correctly from a user perspective while keeping core logic easy to test.
+
+### Goals
+- Catch breaking changes before deployment
+- Keep tests fast and reliable
+- Test behavior rather than implementation details
+
+### What is tested
+
+**API layer (`src/api`)**
+- Correct request URL and query construction
+- Proper handling of success and error responses
+- Caching behavior where applicable
+
+**Utilities (`src/utils`)**
+- Pure logic functions with direct unit tests
+- Edge cases such as empty inputs, invalid data, and boundaries
+
+**Components (`src/components`)**
+- Rendering of expected content
+- Conditional UI states (data present, missing, or loading)
+- Avoids testing internal component state unless required
+
+**Pages (`src/pages`)**
+- Page-level user-visible behavior
+- Routing and navigation
+- API calls are mocked to keep tests deterministic
+
+### Mocking approach
+- All network requests are mocked
+- Page tests mock imported API functions
+- Heavy visual components (maps/SVG) may be mocked with lightweight stubs
+
+### Coverage
+- Coverage is generated using the V8 provider
+- Focus is placed on line and function coverage
+- Branch coverage is tracked but not forced to 100%, especially for UI conditionals
+
+### Commands
+
+```bash
+# Run all tests
+npm test
+
+# Run tests once (CI-style)
+npx vitest run
+
+# Run a specific test file
+npx vitest run src/test/page.home.test.tsx
+
+# Generate coverage report
+npm run test:coverage
 
 
 
