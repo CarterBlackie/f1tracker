@@ -96,10 +96,10 @@ export default function Home() {
         <div className="homeLeft">
           <div className="homeKicker">F1Tracker</div>
 
-          <h1 className="homeTitle">Season and standings, with clean UI.</h1>
+          <h1 className="homeTitle">Formula One Tracker By Carter Blackie</h1>
 
           <div className="homeSub">
-            Live mode is paused. Track outlines are working across circuits.
+            Welcome to F1Tracker, your go-to source for Formula 1 season
           </div>
 
           <div className="homeGrid homeGridLeft">
@@ -116,7 +116,7 @@ export default function Home() {
                 <span className="badge">Tables</span>
               </div>
               <div className="homeCardTitle">Standings</div>
-              <div className="homeCardMeta">Drivers and constructors with tabs.</div>
+              <div className="homeCardMeta">Drivers and constructors standings.</div>
             </Link>
 
             <Link className="homeCard" to="/live">
@@ -125,7 +125,7 @@ export default function Home() {
                 <span className="badge" style={{ marginLeft: "auto" }}>Paused</span>
               </div>
               <div className="homeCardTitle">Live</div>
-              <div className="homeCardMeta">Coming back after UI polish.</div>
+              <div className="homeCardMeta">Watch Each Race Live.</div>
             </Link>
           </div>
         </div>

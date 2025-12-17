@@ -20,17 +20,40 @@ type LoadState =
 
 type Dot = {
   driver_number: number;
-  s: number; // 0..1 progress along the track path
+  s: number; // 0..1
   name: string;
   color?: string;
 };
 
+type DrawnDot = Dot & { x: number; y: number };
+
 const VIEW_W = 160;
 const VIEW_H = 120;
-const PAD = 8;
+const PAD = 4;
+
+const SVG_HEIGHT = 520;
+const TRACK_BG_STROKE = 12;
+const TRACK_FG_STROKE = 7;
+
+// easing (how fast current catches target)
+const SMOOTH_PER_SEC = 2.0;
+
+// prediction: caps how fast a driver can move around the loop
+// (1.0 means 1 full lap per second, which is huge; 0.25 is still fast)
+const MAX_DS_PER_SEC = 0.35;
 
 function clamp01(v: number) {
   return Math.max(0, Math.min(1, v));
+}
+
+function mod1(v: number) {
+  const m = v % 1;
+  return m < 0 ? m + 1 : m;
+}
+
+function shortestWrapDiff(from: number, to: number) {
+  const d = mod1(to - from);
+  return d > 0.5 ? d - 1 : d;
 }
 
 function formatTime(dt: Date) {
@@ -49,14 +72,6 @@ function sessionLabel(s: OpenF1Session) {
   return `${s.country_name} — ${s.session_name}${date ? ` (${date})` : ""}`;
 }
 
-/**
- * Build a mapper that converts OpenF1 (x,y) to a stable normalized progress value (s in 0..1).
- * This is not perfect physics, but it makes dots move smoothly and consistently.
- *
- * Strategy:
- * - Map OpenF1 x/y into a normalized box [0..1]
- * - Convert to angle around the box center -> s
- */
 function makeProgressMapper(points: OpenF1LocationPoint[]) {
   const xs = points.map((p) => p.x);
   const ys = points.map((p) => p.y);
@@ -67,21 +82,17 @@ function makeProgressMapper(points: OpenF1LocationPoint[]) {
   const minY = Math.min(...ys);
   const maxY = Math.max(...ys);
 
-  const w = Math.max(1e-9, maxX - minX);
-  const h = Math.max(1e-9, maxY - minY);
-
   const cx = (minX + maxX) / 2;
   const cy = (minY + maxY) / 2;
 
+  const w = Math.max(1e-9, maxX - minX);
+  const h = Math.max(1e-9, maxY - minY);
+
   return (x: number, y: number) => {
-    // normalize to roughly circular coordinates
     const nx = (x - cx) / (w / 2);
     const ny = (y - cy) / (h / 2);
-
-    // angle -> progress
-    const ang = Math.atan2(ny, nx); // -pi..pi
-    const s = (ang + Math.PI) / (2 * Math.PI); // 0..1
-    return clamp01(s);
+    const ang = Math.atan2(ny, nx);
+    return clamp01((ang + Math.PI) / (2 * Math.PI));
   };
 }
 
@@ -89,7 +100,6 @@ export default function Live() {
   const YEAR = 2025;
 
   const [load, setLoad] = useState<LoadState>({ status: "loading" });
-
   const [sessions, setSessions] = useState<OpenF1Session[]>([]);
   const [sessionKey, setSessionKey] = useState<number | null>(null);
 
@@ -109,16 +119,35 @@ export default function Live() {
   }, [drivers]);
 
   const [geoPath, setGeoPath] = useState<string | null>(null);
-
   const pathRef = useRef<SVGPathElement | null>(null);
 
   const [rawPoints, setRawPoints] = useState<OpenF1LocationPoint[]>([]);
-  const [dots, setDots] = useState<Dot[]>([]);
+
+  // “last known target” coming from polling
+  const targetRef = useRef<Map<number, Dot>>(new Map());
+
+  // for prediction: last target s + timestamp + estimated speed
+  const targetMetaRef = useRef<
+    Map<number, { s: number; tMs: number; dsPerSec: number }>
+  >(new Map());
+
+  // smoothed current s
+  const currentRef = useRef<Map<number, number>>(new Map());
+
+  // lap estimate
+  const unwrappedLapRef = useRef<Map<number, number>>(new Map());
+
+  const [drawnDots, setDrawnDots] = useState<DrawnDot[]>([]);
 
   const [t01, setT01] = useState(0);
   const t01Ref = useRef(0);
   const [playing, setPlaying] = useState(true);
   const [scrubbing, setScrubbing] = useState(false);
+
+  const [speed, setSpeed] = useState<0.5 | 1 | 2 | 4>(1);
+
+  const [lapDriver, setLapDriver] = useState<number | null>(null);
+  const [lapNow, setLapNow] = useState<{ lap: number; pct: number } | null>(null);
 
   useEffect(() => {
     t01Ref.current = t01;
@@ -129,31 +158,35 @@ export default function Live() {
     return sessionTimeAt(session, t01);
   }, [session, t01]);
 
-  // 1) Load 2025 race sessions
+  useEffect(() => {
+    if (!drivers.length) return;
+    if (lapDriver != null) return;
+    setLapDriver(drivers[0].driver_number);
+  }, [drivers, lapDriver]);
+
+  // Load sessions
   useEffect(() => {
     let cancelled = false;
 
     (async () => {
       try {
-        setLoad({ status: "loading" });
-
         const all = await listRaceSessions(YEAR);
-        const races = all.filter((s) =>
-          String(s.session_name).toLowerCase().includes("race")
-        );
-        races.sort((a, b) => Date.parse(b.date_start) - Date.parse(a.date_start));
+        const races = all
+          .filter((s) => s.session_name.toLowerCase().includes("race"))
+          .sort((a, b) => Date.parse(b.date_start) - Date.parse(a.date_start));
 
-        if (cancelled) return;
-
-        setSessions(races);
-        setSessionKey(races[0]?.session_key ?? null);
-        setLoad({ status: "ready" });
+        if (!cancelled) {
+          setSessions(races);
+          setSessionKey(races[0]?.session_key ?? null);
+          setLoad({ status: "ready" });
+        }
       } catch (e: any) {
-        if (cancelled) return;
-        setLoad({
-          status: "error",
-          message: e?.message ?? "Failed to load sessions.",
-        });
+        if (!cancelled) {
+          setLoad({
+            status: "error",
+            message: e?.message ?? "Failed to load sessions",
+          });
+        }
       }
     })();
 
@@ -162,7 +195,7 @@ export default function Live() {
     };
   }, []);
 
-  // 2) When session changes: drivers + track path
+  // Session change reset
   useEffect(() => {
     let cancelled = false;
 
@@ -171,8 +204,14 @@ export default function Live() {
 
       setDrivers([]);
       setRawPoints([]);
-      setDots([]);
-      setGeoPath(null);
+      setDrawnDots([]);
+      setLapNow(null);
+
+      targetRef.current.clear();
+      targetMetaRef.current.clear();
+      currentRef.current.clear();
+      unwrappedLapRef.current.clear();
+
       setT01(0);
 
       try {
@@ -187,19 +226,13 @@ export default function Live() {
           session.circuit_short_name,
           session.location,
           session.country_name,
-          session.session_name,
         ]
           .filter(Boolean)
           .map(String);
 
         const found = await getCircuitLineStringByHints(hints);
-        if (!found) {
-          if (!cancelled) setGeoPath(null);
-          return;
-        }
-
-        const d = lineToSvgPath(found, VIEW_W, VIEW_H, PAD);
-        if (!cancelled) setGeoPath(d);
+        if (!cancelled)
+          setGeoPath(found ? lineToSvgPath(found, VIEW_W, VIEW_H, PAD) : null);
       } catch {
         if (!cancelled) setGeoPath(null);
       }
@@ -210,65 +243,61 @@ export default function Live() {
     };
   }, [session]);
 
-  // 3) Replay clock (pause while scrubbing)
+  // Second-for-second playback, scaled by speed
   useEffect(() => {
-    if (!playing || scrubbing) return;
+    if (!session || !playing || scrubbing) return;
 
     let raf = 0;
     let last = performance.now();
 
-    const secondsForFullSession = 360;
+    const startMs = Date.parse(session.date_start);
+    const endMs = session.date_end
+      ? Date.parse(session.date_end)
+      : startMs + 2 * 60 * 60 * 1000;
+
+    const durationMs = Math.max(1, endMs - startMs);
 
     function tick(now: number) {
-      const dt = (now - last) / 1000;
+      const dtMs = (now - last) * speed;
       last = now;
 
-      setT01((t) => {
-        const next = t + dt / secondsForFullSession;
-        return next >= 1 ? next - 1 : next;
-      });
-
+      setT01((t) => mod1(t + dtMs / durationMs));
       raf = requestAnimationFrame(tick);
     }
 
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, scrubbing]);
+  }, [session, playing, scrubbing, speed]);
 
-  // 4) Poll OpenF1 slice (depends ONLY on session)
+  // Poll telemetry
   useEffect(() => {
-    let cancelled = false;
     if (!session) return;
+    let cancelled = false;
 
-    const id = window.setInterval(async () => {
+    const id = setInterval(async () => {
       try {
-        const centerIso = sessionTimeAt(session, t01Ref.current).toISOString();
-        const slice = await getLocationSlice(session.session_key, centerIso);
-        if (cancelled) return;
-
-        const clean = slice.filter(
-          (p) => Number.isFinite(p.x) && Number.isFinite(p.y)
-        );
-        setRawPoints(clean);
+        const iso = sessionTimeAt(session, t01Ref.current).toISOString();
+        const slice = await getLocationSlice(session.session_key, iso);
+        if (!cancelled) {
+          setRawPoints(
+            slice.filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y))
+          );
+        }
       } catch {
         // ignore
       }
-    }, 350);
+    }, 400);
 
     return () => {
       cancelled = true;
-      window.clearInterval(id);
+      clearInterval(id);
     };
   }, [session]);
 
-  // 5) Convert slice -> per-driver progress on the track path
+  // Convert slice -> targets + estimate ds/dt for prediction
   useEffect(() => {
-    if (!rawPoints.length) {
-      setDots([]);
-      return;
-    }
+    if (!rawPoints.length) return;
 
-    // latest per driver (THIS is what makes them move)
     const latest = new Map<number, OpenF1LocationPoint>();
     for (const p of rawPoints) {
       const prev = latest.get(p.driver_number);
@@ -276,71 +305,132 @@ export default function Live() {
     }
 
     const mapper = makeProgressMapper(rawPoints);
-    if (!mapper) {
-      setDots([]);
-      return;
-    }
+    if (!mapper) return;
 
-    const next: Dot[] = [];
+    const nowMs = performance.now();
+
+    const nextTargets = new Map<number, Dot>();
+
     for (const [num, p] of latest) {
       const d = driverMap.get(num);
-      next.push({
+      const s = mapper(p.x, p.y);
+
+      nextTargets.set(num, {
         driver_number: num,
-        s: mapper(p.x, p.y),
+        s,
         name: d?.full_name ?? `#${num}`,
         color: d?.team_colour ? `#${d.team_colour}` : undefined,
       });
+
+      // initialize current and lap buffers
+      if (!currentRef.current.has(num)) currentRef.current.set(num, s);
+      if (!unwrappedLapRef.current.has(num)) unwrappedLapRef.current.set(num, 0);
+
+      // update prediction meta
+      const meta = targetMetaRef.current.get(num);
+      if (!meta) {
+        targetMetaRef.current.set(num, { s, tMs: nowMs, dsPerSec: 0 });
+      } else {
+        const dt = Math.max(0.001, (nowMs - meta.tMs) / 1000);
+        const diff = shortestWrapDiff(meta.s, s);
+        let dsPerSec = diff / dt;
+
+        // clamp insane speeds so prediction doesn't go crazy
+        dsPerSec = Math.max(-MAX_DS_PER_SEC, Math.min(MAX_DS_PER_SEC, dsPerSec));
+
+        // small smoothing on speed
+        const blended = meta.dsPerSec * 0.6 + dsPerSec * 0.4;
+
+        targetMetaRef.current.set(num, { s, tMs: nowMs, dsPerSec: blended });
+      }
     }
 
-    setDots(next);
+    targetRef.current = nextTargets;
   }, [rawPoints, driverMap]);
 
-  // 6) Render dots ON the SVG path (always on-track)
-  const drawnDots = useMemo(() => {
-    const path = pathRef.current;
-    if (!path) return [];
+  // RAF: predict target continuously so dots don't "wait"
+  useEffect(() => {
+    let raf = 0;
+    let last = performance.now();
 
-    const len = path.getTotalLength();
-    return dots.map((d) => {
-      const p = path.getPointAtLength(d.s * len);
-      return { ...d, x: p.x, y: p.y };
-    });
-  }, [dots, geoPath]); // geoPath change recreates the path
+    function frame(now: number) {
+      const path = pathRef.current;
+      if (!path || !geoPath) {
+        raf = requestAnimationFrame(frame);
+        return;
+      }
 
-  const title = session
-    ? `Live • ${session.country_name} • ${session.session_name}`
-    : "Live";
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
 
-  if (load.status === "error") {
-    return (
-      <div className="container">
-        <div style={{ padding: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-            <div className="homeKicker">F1Tracker</div>
-            <Link className="pill" to="/">
-              Back
-            </Link>
-          </div>
-          <div className="small" style={{ marginTop: 12 }}>
-            {load.message}
-          </div>
-        </div>
-      </div>
-    );
-  }
+      const len = path.getTotalLength();
+      const out: DrawnDot[] = [];
+
+      for (const [num, base] of targetRef.current) {
+        const meta = targetMetaRef.current.get(num);
+
+        // predicted target
+        let targetS = base.s;
+        if (meta) {
+          const age = Math.max(0, (now - meta.tMs) / 1000);
+          targetS = mod1(meta.s + meta.dsPerSec * age);
+        }
+
+        const c0 = currentRef.current.get(num) ?? targetS;
+        const diff = shortestWrapDiff(c0, targetS);
+
+        const step = 1 - Math.exp(-SMOOTH_PER_SEC * dt);
+        const c1 = mod1(c0 + diff * step);
+
+        currentRef.current.set(num, c1);
+
+        const lapPrev = unwrappedLapRef.current.get(num) ?? 0;
+        unwrappedLapRef.current.set(num, lapPrev + diff * step);
+
+        const p = path.getPointAtLength(c1 * len);
+        out.push({ ...base, s: c1, x: p.x, y: p.y });
+      }
+
+      out.sort((a, b) => a.driver_number - b.driver_number);
+      setDrawnDots(out);
+
+      if (lapDriver != null) {
+        const lapU = unwrappedLapRef.current.get(lapDriver);
+        const curS = currentRef.current.get(lapDriver);
+        if (lapU != null && curS != null) {
+          setLapNow({
+            lap: Math.max(1, Math.floor(lapU) + 1),
+            pct: Math.round(mod1(curS) * 100),
+          });
+        } else {
+          setLapNow(null);
+        }
+      }
+
+      raf = requestAnimationFrame(frame);
+    }
+
+    raf = requestAnimationFrame(frame);
+    return () => cancelAnimationFrame(raf);
+  }, [geoPath, lapDriver]);
 
   return (
     <div className="container">
       <div className="homeHeroGrid">
         <div className="homeLeft">
           <div className="homeKicker">F1Tracker</div>
-          <h1 className="homeTitle">{title}</h1>
+
+          <h1 className="homeTitle">
+            {session
+              ? `Live • ${session.country_name} • ${session.session_name}`
+              : "Live"}
+          </h1>
 
           <div className="homeSub">
-            Dots are constrained to the track path (always looks like they drive the circuit).
+            Smooth continuous motion (prediction between updates).
           </div>
 
-          <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 12 }}>
+          <div style={{ display: "flex", gap: 10, marginTop: 12, flexWrap: "wrap" }}>
             <Link className="pill" to="/">
               Back
             </Link>
@@ -348,6 +438,19 @@ export default function Live() {
             <button className="pill pillActive" onClick={() => setPlaying((p) => !p)}>
               {playing ? "Pause" : "Play"}
             </button>
+
+            <div style={{ display: "flex", gap: 8 }}>
+              {[0.5, 1, 2, 4].map((v) => (
+                <button
+                  key={v}
+                  className={`pill ${speed === v ? "pillActive" : ""}`}
+                  onClick={() => setSpeed(v as 0.5 | 1 | 2 | 4)}
+                  type="button"
+                >
+                  {v}×
+                </button>
+              ))}
+            </div>
           </div>
 
           <div style={{ marginTop: 14 }}>
@@ -355,11 +458,8 @@ export default function Live() {
               Race session ({YEAR})
             </div>
             <select
-              value={sessionKey == null ? "" : String(sessionKey)}
-              onChange={(e) => {
-                const v = e.target.value;
-                setSessionKey(v === "" ? null : Number(v));
-              }}
+              value={sessionKey ?? ""}
+              onChange={(e) => setSessionKey(Number(e.target.value))}
               style={{
                 width: "100%",
                 padding: "10px 12px",
@@ -370,22 +470,50 @@ export default function Live() {
                 outline: "none",
               }}
             >
-              <option value="">Select a race…</option>
               {sessions.map((s) => (
-                <option key={s.session_key} value={String(s.session_key)}>
+                <option key={s.session_key} value={s.session_key}>
                   {sessionLabel(s)}
                 </option>
               ))}
             </select>
           </div>
 
-          {/* TIME BAR */}
           <div style={{ marginTop: 14 }}>
             <div style={{ display: "flex", justifyContent: "space-between", gap: 10 }}>
-              <div style={{ fontSize: 12, opacity: 0.7 }}>Session time</div>
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Lap counter driver</div>
               <div style={{ fontSize: 12, opacity: 0.85 }}>
-                {displayTime ? formatTime(displayTime) : "—"}
+                {lapNow ? `Lap ${lapNow.lap} • ${lapNow.pct}%` : "—"}
               </div>
+            </div>
+
+            <select
+              value={lapDriver ?? ""}
+              onChange={(e) => setLapDriver(Number(e.target.value))}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                borderRadius: 12,
+                marginTop: 8,
+                background: "rgba(18, 22, 34, .78)",
+                color: "var(--text)",
+                border: "1px solid rgba(34, 42, 59, .9)",
+                outline: "none",
+              }}
+            >
+              {drivers.map((d) => (
+                <option key={d.driver_number} value={d.driver_number}>
+                  {d.full_name ?? `#${d.driver_number}`}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div style={{ marginTop: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 12, opacity: 0.7 }}>Session time</span>
+              <span style={{ fontSize: 12, opacity: 0.85 }}>
+                {displayTime ? formatTime(displayTime) : "—"}
+              </span>
             </div>
 
             <input
@@ -408,23 +536,9 @@ export default function Live() {
               style={{ width: "100%", marginTop: 8 }}
             />
 
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                fontSize: 12,
-                opacity: 0.6,
-                marginTop: 6,
-              }}
-            >
-              <span>Start</span>
-              <span>{Math.round(t01 * 100)}%</span>
-              <span>End</span>
+            <div style={{ fontSize: 12, opacity: 0.6, marginTop: 6 }}>
+              Speed: {speed}× • Dots: {drawnDots.length}
             </div>
-          </div>
-
-          <div className="small" style={{ marginTop: 12 }}>
-            Drivers: {drivers.length} • Dots: {drawnDots.length}
           </div>
         </div>
 
@@ -437,21 +551,14 @@ export default function Live() {
           </div>
 
           <div className="homeMiniMap homeMiniMapBig" style={{ marginTop: 10 }}>
-            <svg
-              viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
-              width="100%"
-              height={340}
-              role="img"
-              aria-label="Live track"
-              style={{ display: "block" }}
-            >
+            <svg viewBox={`0 0 ${VIEW_W} ${VIEW_H}`} width="100%" height={SVG_HEIGHT}>
               {geoPath ? (
                 <>
                   <path
                     d={geoPath}
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="10"
+                    strokeWidth={TRACK_BG_STROKE}
                     opacity="0.15"
                   />
                   <path
@@ -459,7 +566,7 @@ export default function Live() {
                     d={geoPath}
                     fill="none"
                     stroke="currentColor"
-                    strokeWidth="6"
+                    strokeWidth={TRACK_FG_STROKE}
                     strokeLinecap="round"
                     strokeLinejoin="round"
                     opacity="0.92"
@@ -471,13 +578,13 @@ export default function Live() {
                 </text>
               )}
 
-              {drawnDots.map((p) => (
+              {drawnDots.map((d) => (
                 <circle
-                  key={p.driver_number}
-                  cx={p.x}
-                  cy={p.y}
-                  r="3.3"
-                  fill={p.color ?? "currentColor"}
+                  key={d.driver_number}
+                  cx={d.x}
+                  cy={d.y}
+                  r="3.6"
+                  fill={d.color ?? "currentColor"}
                 />
               ))}
             </svg>
