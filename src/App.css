@@ -287,7 +287,7 @@ body::after {
 }
 
 /* =======================
-   Home page
+   Home page (legacy)
 ======================= */
 
 .homeHeroGrid {
@@ -526,5 +526,539 @@ a:focus-visible {
 
   .homeTitle {
     font-size: 32px;
+  }
+}
+
+/* =======================================================================
+   NEW: full-page layout + section themes + big feature cards + fancy buttons
+   ======================================================================= */
+
+/* Scroll container */
+.scrollRoot {
+  height: 100vh;
+  overflow-y: auto;
+  scroll-snap-type: y mandatory;
+  scroll-behavior: smooth;
+  position: relative;
+}
+
+/* Section themes (transitioned) */
+.scrollRoot::before {
+  content: "";
+  position: fixed;
+  inset: -20%;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 420ms ease;
+  filter: blur(16px);
+}
+
+.scrollRoot.theme-hero::before {
+  opacity: 0.9;
+  background:
+    radial-gradient(900px 520px at 20% 20%, rgba(255, 170, 210, 0.14), transparent 60%),
+    radial-gradient(720px 420px at 80% 80%, rgba(130, 180, 255, 0.10), transparent 60%);
+}
+
+.scrollRoot.theme-nav::before {
+  opacity: 0.9;
+  background:
+    radial-gradient(900px 520px at 25% 30%, rgba(190, 130, 255, 0.12), transparent 60%),
+    radial-gradient(720px 420px at 78% 65%, rgba(255, 170, 210, 0.10), transparent 60%);
+}
+
+.scrollRoot.theme-next::before {
+  opacity: 0.9;
+  background:
+    radial-gradient(900px 520px at 75% 25%, rgba(130, 180, 255, 0.14), transparent 60%),
+    radial-gradient(720px 420px at 30% 80%, rgba(255, 130, 190, 0.10), transparent 60%);
+}
+
+.scrollSection {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  padding: 64px 0;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+  position: relative;
+  z-index: 1; /* above scrollRoot::before */
+}
+
+/* soft overlay that fades when section is active */
+.scrollSection::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(700px 420px at 50% 15%, rgba(255,255,255,0.04), transparent 60%);
+  opacity: 0.35;
+  transition: opacity 420ms ease;
+}
+.scrollSection.isActive::after {
+  opacity: 0.65;
+}
+
+.panelGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 56px;
+  align-items: center;
+}
+
+.panelLeft {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.panelRight {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Hero copy */
+.kicker {
+  letter-spacing: 0.12em;
+  font-size: 12px;
+  color: var(--muted);
+  opacity: 0.85;
+  text-transform: uppercase;
+}
+
+.panelTitle {
+  font-size: 54px;
+  font-weight: 950;
+  margin: 10px 0 8px;
+  line-height: 1.04;
+}
+
+.panelLead {
+  max-width: 56ch;
+  color: var(--muted);
+  font-size: 15px;
+}
+
+/* Hero buttons */
+.heroActions {
+  margin-top: 18px;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.heroBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 22px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(10, 12, 20, 0.55);
+  color: var(--text);
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-decoration: none;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.heroBtn:hover {
+  transform: translateY(-2px);
+  border-color: var(--pinkStrong);
+  box-shadow:
+    0 16px 40px rgba(0, 0, 0, 0.45),
+    0 0 0 1px rgba(255, 170, 210, 0.16);
+}
+
+.heroBtnPrimary {
+  background: linear-gradient(
+    180deg,
+    rgba(255, 170, 210, 0.28),
+    rgba(255, 130, 190, 0.18)
+  );
+  border-color: rgba(255, 170, 210, 0.55);
+}
+
+.heroBtnSecondary {
+  background: rgba(10, 12, 20, 0.45);
+}
+
+/* Hero mini chips */
+.heroMini {
+  display: flex;
+  gap: 10px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+.miniChip {
+  padding: 10px 14px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: rgba(10, 12, 20, 0.55);
+  min-width: 120px;
+}
+
+.miniTop {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.miniVal {
+  margin-top: 6px;
+  font-weight: 900;
+  font-size: 18px;
+}
+
+/* Scroll cue */
+.scrollCueFancy {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 22px;
+  opacity: 0.85;
+}
+
+.scrollCueText {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.scrollCueLine {
+  width: 44px;
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(255, 170, 210, 0.45);
+  animation: cuePulse 1.6s ease-in-out infinite;
+}
+
+@keyframes cuePulse {
+  0% { transform: translateX(0); opacity: 0.45; }
+  50% { transform: translateX(10px); opacity: 0.9; }
+  100% { transform: translateX(0); opacity: 0.45; }
+}
+
+/* Glass panel right */
+.glassPanel {
+  padding: 24px;
+  border-radius: 22px;
+  backdrop-filter: blur(14px);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  width: min(520px, 92vw);
+}
+
+.glassPanelBig {
+  padding: 26px;
+}
+
+.glassTopRow {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.glassTitleBig {
+  font-size: 22px;
+  font-weight: 950;
+  margin-top: 8px;
+}
+
+.glassMeta {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.glassRail {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.railCard {
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(10, 12, 20, 0.35);
+}
+
+.railLabel {
+  font-weight: 900;
+  font-size: 14px;
+}
+
+.railHint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* Section header */
+.sectionHeadBig {
+  margin-bottom: 18px;
+}
+
+.sectionEyebrow {
+  font-size: 12px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  opacity: 0.9;
+}
+
+.sectionTitleBig {
+  font-size: 34px;
+  font-weight: 950;
+  margin-top: 8px;
+}
+
+.sectionDesc {
+  margin-top: 10px;
+  color: var(--muted);
+  max-width: 70ch;
+}
+
+/* Right-side dots */
+.progressDots {
+  position: fixed;
+  right: 18px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(10, 12, 20, 0.5);
+  cursor: pointer;
+}
+
+.dot:hover {
+  border-color: rgba(255, 170, 210, 0.55);
+}
+
+.dotActive {
+  background: rgba(255, 170, 210, 0.35);
+  border-color: rgba(255, 170, 210, 0.75);
+  box-shadow: 0 0 0 6px rgba(255, 170, 210, 0.10);
+}
+
+/* Big feature grid */
+.featureGridBig {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 22px;
+  margin-top: 18px;
+}
+
+/* Small pill */
+.pillTiny {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(10, 12, 20, 0.35);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/* FEATURE CARD: all 4 upgrades live here */
+.featureCardLarge {
+  position: relative;
+  min-height: 360px;
+  padding: 24px;
+  border-radius: 26px;
+  border: 1px solid var(--line);
+  background: rgba(10, 12, 20, 0.62);
+  overflow: hidden;
+
+  /* tilt vars */
+  --rx: 0deg;
+  --ry: 0deg;
+  --mx: 50%;
+  --my: 35%;
+
+  transition:
+    transform 220ms ease,
+    box-shadow 220ms ease,
+    border-color 220ms ease;
+  transform-style: preserve-3d;
+}
+
+/* Parallax glow layer */
+.featureCardLarge::before {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  background:
+    radial-gradient(520px 300px at var(--mx) var(--my), rgba(255, 170, 210, 0.18), transparent 60%),
+    radial-gradient(520px 300px at calc(var(--mx) + 10%) calc(var(--my) + 10%), rgba(130, 180, 255, 0.12), transparent 60%);
+  opacity: 0;
+  transition: opacity 220ms ease;
+  pointer-events: none;
+}
+
+.featureCardLarge::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(900px 520px at 20% 0%, rgba(255,255,255,0.06), transparent 55%);
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* Hover: tilt + scale */
+.featureCardLarge:hover {
+  transform: perspective(900px) rotateX(var(--rx)) rotateY(var(--ry)) scale(1.05);
+  border-color: var(--pinkStrong);
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.65),
+    0 0 0 1px rgba(255, 170, 210, 0.18);
+}
+
+.featureCardLarge:hover::before {
+  opacity: 1;
+}
+
+/* Top row */
+.featureTopRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Icon block (animated on hover) */
+.featureIconWrap {
+  margin-top: 18px;
+  width: 54px;
+  height: 54px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(10, 12, 20, 0.45);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+  transform: translateZ(18px);
+}
+
+.featureIcon {
+  width: 28px;
+  height: 28px;
+  color: rgba(255, 255, 255, 0.92);
+  opacity: 0.95;
+}
+
+.featureCardLarge:hover .featureIconWrap {
+  animation: iconPop 520ms ease;
+}
+
+@keyframes iconPop {
+  0% { transform: translateZ(18px) scale(1); }
+  50% { transform: translateZ(18px) scale(1.08); }
+  100% { transform: translateZ(18px) scale(1); }
+}
+
+/* Card text */
+.featureTitle {
+  margin-top: 14px;
+  font-size: 26px;
+  font-weight: 950;
+  transform: translateZ(16px);
+}
+
+.featureMeta {
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  transform: translateZ(12px);
+}
+
+/* Description appears on hover */
+.featureDesc {
+  margin-top: 14px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  opacity: 0;
+  transform: translateY(10px) translateZ(12px);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.featureCardLarge:hover .featureDesc {
+  opacity: 1;
+  transform: translateY(0) translateZ(12px);
+}
+
+.featureAction {
+  position: absolute;
+  left: 24px;
+  bottom: 20px;
+  color: var(--muted);
+  font-size: 13px;
+  transform: translateZ(10px);
+}
+
+/* Next race side map container */
+.mapStage {
+  width: min(560px, 92vw);
+  border-radius: 22px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(10,12,20,0.4);
+  padding: 14px;
+  box-shadow: 0 26px 70px rgba(0,0,0,0.55);
+}
+
+/* Fade-up reveal (used by data-reveal) */
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(10px);
+  transition: opacity 420ms ease, transform 420ms ease;
+  will-change: opacity, transform;
+}
+
+[data-reveal].in {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Responsive */
+@media (max-width: 980px) {
+  .panelGrid {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+  .panelTitle {
+    font-size: 40px;
+  }
+  .featureGridBig {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Reduce motion: remove tilt + glow intensity */
+@media (prefers-reduced-motion: reduce) {
+  .featureCardLarge,
+  .featureCardLarge:hover {
+    transform: none !important;
+  }
+  .featureCardLarge::before {
+    transition: none;
+  }
+  .scrollCueLine {
+    animation: none;
   }
 }
